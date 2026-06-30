@@ -28,6 +28,7 @@ The output files are internal engineering guides and automation runbooks, not co
 - Update existing onboarding assets when reusable project knowledge appears during later agent work.
 - Distill tacit knowledge into executable instructions, recipes, playbooks, and handoff criteria, not background explanation.
 - Preserve existing instruction files unless the user confirms replacement.
+- Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-onboard skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` unless the user explicitly names one of them as the target project.
 - Do not run install, build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment.
 - Install bundled direct skills according to `bundled-skills.json`: proactively offer configured default project-local installs, install only platforms the owner explicitly uses or the repository evidence detects, and get user approval before copying files into the target project.
 - Install bundled packages according to `bundled-packages.json`: proactively offer configured default project-local installs, but get user approval before running installers that modify the target project.
@@ -47,11 +48,18 @@ Do not duplicate reference content in generated files. Put the concise entry poi
 
 ## Workflow
 
-### 0. Identify The Knowledge Holder And Goal
+### 0. Identify The Knowledge Holder, Goal, And Target Root
 
 If the user invoked the skill with a project description or arguments, use that directly. Otherwise ask:
 
 > Briefly describe what this project does, which areas or workflows you know best, and what a new agent or developer should be able to do after this onboarding.
+
+Determine the target project root before scanning:
+
+- If the user provides a project path, use that path as the target root.
+- If the current working directory is the project to onboard, use the current working directory as the target root.
+- If the current working directory is this `agent-onboard` skill, another skill source directory, `$CODEX_HOME`, or a Codex plugin/cache directory, do not scan it as the target project. Ask for the target project path.
+- Keep all repository scans, instruction-file checks, and evidence reads inside the target root unless the user explicitly asks to inspect an external dependency, installed skill, or package source.
 
 Ask early which workflows should become agent-runnable, which parts usually require a familiar human, which skills/scripts/tools agents should use, whether any bundled packages or platform skills should be created or installed, which agent platforms matter, and whether to generate a reusable project skill now or only propose its shape.
 
@@ -60,7 +68,7 @@ Ask early which workflows should become agent-runnable, which parts usually requ
 Check whether instruction files already exist:
 
 ```bash
-rg --files -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*'
+rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*'
 ```
 
 If any instruction file exists, read it before doing anything else. Ask whether to update it, replace it, or create a draft alongside it. Do not overwrite without confirmation.
@@ -69,7 +77,9 @@ If the user is adding new knowledge to existing onboarding assets, prefer a mini
 
 ### 2. Scan Repository Evidence
 
-Use `rg --files` first. Use `rg --files --hidden` when inspecting bundled packages that keep platform assets under hidden directories such as `.claude/` or `.opencode/`. Inspect top-level and second-level structure, skipping large generated or dependency folders such as `.git`, `node_modules`, `dist`, `build`, `target`, `.venv`, and `vendor`.
+Use `rg --files <target-project-root>` first. Use `rg --files --hidden <target-project-root>` when inspecting bundled packages that keep platform assets under hidden directories such as `.claude/` or `.opencode/`. Inspect top-level and second-level structure inside the target root, skipping large generated or dependency folders such as `.git`, `node_modules`, `dist`, `build`, `target`, `.venv`, and `vendor`.
+
+Do not broaden scans above the target root. If a discovered file references an external skill, package, or dependency outside the target root, record that reference and ask before inspecting the external location.
 
 Read existing files from this evidence set when present:
 
