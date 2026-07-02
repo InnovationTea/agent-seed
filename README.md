@@ -12,9 +12,11 @@ This repository contains the source and release tooling for the `agent-runbook-d
 |   |-- SKILL.md           # Skill entry point
 |   |-- agents/            # Platform agent metadata
 |   |-- references/        # Load-on-demand workflow references
+|   |   `-- frameworks/    # Built-in framework knowledge packs
 |   |-- bundled-skills/    # Direct skills distributed by this skill
 |   |-- packages/          # Bundled multi-platform skill packages
 |   |-- bundled-skills.json
+|   |-- framework-knowledge.json
 |   |-- recommended-external-plugins.json
 |   `-- bundled-packages.json
 |-- tools/                 # Maintainer tooling, not included in the skill package
@@ -35,6 +37,7 @@ The release package is built from `skill/` only. Root-level files such as this R
 - Recommended external plugin guidance from configuration, using each platform's normal network-backed install flow instead of vendoring plugin internals.
 - Automation breakpoints and human review checkpoints that clarify when an agent can keep looping and when it must stop for approval.
 - Framework fingerprints for common, private, vendor, or internally named frameworks so agents do not guess at framework behavior.
+- Built-in and project-local framework knowledge routing, starting with a Nuwa preset that improves scans and owner interviews without treating preset knowledge as confirmed project facts.
 
 ## Requirements
 
@@ -94,4 +97,5 @@ Do not run the installer without explicit approval. It may write `.opencode/`, `
 - Keep bundled direct skills registered in `skill/bundled-skills.json`.
 - Keep bundled packages registered in `skill/bundled-packages.json`.
 - Keep recommended external plugins registered in `skill/recommended-external-plugins.json`.
+- Keep framework knowledge registered in `skill/framework-knowledge.json`; place built-in framework packs under `skill/references/frameworks/`.
 - Run `make release` before publishing changes so the test and package build both exercise the current tree.

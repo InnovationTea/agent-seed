@@ -23,6 +23,8 @@ The output files are internal engineering guides and automation runbooks, not co
 - Ask targeted interview questions before generating files; use multiple rounds when major knowledge categories remain missing.
 - Do not write guessed commands or conventions as facts.
 - Preserve the source of knowledge: repository evidence, owner-confirmed fact, operational preference, risk judgment, observed run result, or unknown.
+- Treat built-in and project-local framework knowledge as scan guidance and interview prompts, not as confirmed target-project facts.
+- Label framework knowledge sources explicitly: `Preset`, `Repo-confirmed`, `Owner-confirmed`, `Inferred`, or `Unknown`.
 - Capture automation blockers as explicit breakpoints with owner-confirmed fixes or escalation rules.
 - Capture approved skills, recommended external plugins, project scripts, and internal tools with trigger conditions, required inputs, success signals, and safety levels.
 - Capture bundled direct skills with source path, supported platforms, target paths, trigger conditions, default-offer rules, verification, and safety rules.
@@ -42,7 +44,7 @@ The output files are internal engineering guides and automation runbooks, not co
 Read only the reference file needed for the current phase:
 
 - For interview categories, source labels, tooling inventory, recommended external plugins, bundled direct skills, bundled packages, platform skills, version pins, and automation breakpoint capture, read `references/knowledge-distillation.md`; when external plugins are relevant, also inspect `recommended-external-plugins.json`.
-- For uncommon, private, vendor, or internally named frameworks, or when the user mentions a framework the model may not know well, read `references/framework-fingerprints.md`.
+- For uncommon, private, vendor, internally named, or preset-supported frameworks, or when the user mentions a framework the model may not know well, read `references/framework-fingerprints.md`. If `framework-knowledge.json` contains a matching framework entry or the target project provides project-local framework knowledge, load only the matching framework knowledge files before interviewing the owner.
 - For `AGENTS.md`, `agents.d/`, `CLAUDE.md`, project-specific skill structures, resource directories, bundled direct skills, bundled packages, platform skills, and default project-local installation, read `references/output-assets.md` before generating files.
 - When the user adds knowledge after initial onboarding or asks to update existing instructions, read `references/update-existing-assets.md`.
 - Before claiming the project is agent-ready or automation-ready, read `references/fresh-agent-dry-run.md`.
@@ -100,11 +102,14 @@ Use the project description and knowledge-holder role from Step 0 to decide whic
 Run a framework fingerprint pass before presenting the scan summary:
 
 - Identify framework candidates from dependency names, build plugins, package managers, manifest files, generated directories, source file extensions, decorators, annotations, route/config files, and CLI wrappers.
+- Inspect `framework-knowledge.json` before framework fingerprinting and merge matching aliases, fingerprint terms, and knowledge paths with owner-mentioned names.
+- Check project-local framework knowledge candidates from the matching registry entry, staying inside the target root.
+- Load matching built-in or project-local framework knowledge only after a name, alias, fingerprint, or owner mention makes it relevant.
 - Search for owner-mentioned or vendor/private framework names case-insensitively, including aliases and translated names when provided.
 - Keep the target root boundary: do not inspect installed SDKs, personal/global skill directories, plugin caches, or external framework sources unless the user explicitly asks.
 - If a framework candidate is not well-known from repository evidence, classify it as `Inferred` or `Unknown` and ask targeted owner questions instead of mapping it onto a familiar framework.
 - If repository files show framework-specific generators, build tools, DSLs, manifests, or lifecycle hooks, capture them as tooling, architecture, change recipes, and debug breakpoints.
-- When a private framework such as Nuwa is mentioned, read `references/framework-fingerprints.md` and use its scan checklist before interviewing the owner.
+- Keep preset framework knowledge out of `Confirmed`; use it for `Preset`, `Missing`, owner questions, and targeted scan terms.
 
 ### 3. Present A Scan Summary
 

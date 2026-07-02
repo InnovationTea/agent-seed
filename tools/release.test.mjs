@@ -93,6 +93,80 @@ test("external plugin prose stays configuration driven", async () => {
   }
 });
 
+test("framework knowledge config registers valid built-in knowledge packs", async () => {
+  const rootDir = process.cwd();
+  const configPath = path.join(rootDir, "skill", "framework-knowledge.json");
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+
+  assert.ok(Array.isArray(config.framework_knowledge));
+  assert.ok(config.framework_knowledge.length > 0);
+
+  const nuwa = config.framework_knowledge.find((entry) => entry.name === "nuwa");
+  assert.ok(nuwa, "expected Nuwa framework knowledge entry");
+  assert.equal(nuwa.knowledge_path, "references/frameworks/nuwa.md");
+
+  for (const entry of config.framework_knowledge) {
+    assert.equal(typeof entry.name, "string");
+    assert.notEqual(entry.name.trim(), "");
+    assert.equal(typeof entry.display_name, "string");
+    assert.notEqual(entry.display_name.trim(), "");
+    assert.ok(Array.isArray(entry.aliases));
+    assert.ok(entry.aliases.length > 0);
+    assert.ok(entry.aliases.every((alias) => typeof alias === "string" && alias.trim() !== ""));
+
+    assert.ok(Array.isArray(entry.fingerprints.search_terms));
+    assert.ok(entry.fingerprints.search_terms.length > 0);
+    assert.ok(entry.fingerprints.search_terms.every((term) => typeof term === "string" && term.trim() !== ""));
+
+    assert.ok(Array.isArray(entry.fingerprints.file_patterns));
+    assert.ok(entry.fingerprints.file_patterns.length > 0);
+    assert.ok(entry.fingerprints.file_patterns.every((pattern) => typeof pattern === "string" && pattern.trim() !== ""));
+
+    assert.equal(typeof entry.knowledge_path, "string");
+    assert.match(entry.knowledge_path, /^references\/frameworks\/.+\.md$/);
+    await stat(path.join(rootDir, "skill", entry.knowledge_path));
+
+    assert.ok(Array.isArray(entry.project_local.registry_paths));
+    assert.ok(entry.project_local.registry_paths.length > 0);
+    assert.ok(Array.isArray(entry.project_local.knowledge_paths));
+    assert.ok(entry.project_local.knowledge_paths.length > 0);
+
+    assert.ok(Array.isArray(entry.source_policy.labels));
+    assert.deepEqual(entry.source_policy.labels, [
+      "Preset",
+      "Repo-confirmed",
+      "Owner-confirmed",
+      "Inferred",
+      "Unknown",
+    ]);
+    assert.equal(entry.source_policy.preset_may_confirm_project_facts, false);
+    assert.equal(entry.safety.stay_inside_target_root, true);
+    assert.equal(entry.safety.external_sdk_inspection_requires_user_request, true);
+  }
+});
+
+test("framework-specific prose stays in framework knowledge packs", async () => {
+  const rootDir = process.cwd();
+  const allowedFiles = new Set([
+    path.normalize(path.join(rootDir, "skill", "framework-knowledge.json")),
+    path.normalize(path.join(rootDir, "skill", "references", "frameworks", "nuwa.md")),
+    path.normalize(path.join(rootDir, "skill", "references", "framework-fingerprints.md")),
+    path.normalize(path.join(rootDir, "README.md")),
+  ]);
+  const files = [path.join(rootDir, "README.md"), ...(await markdownFiles(path.join(rootDir, "skill")))].filter(
+    (filePath) => !allowedFiles.has(path.normalize(filePath))
+  );
+
+  for (const filePath of files) {
+    const content = await readFile(filePath, "utf8");
+    assert.equal(
+      /\bNuwa\b/i.test(content),
+      false,
+      `${path.relative(rootDir, filePath)} hardcodes Nuwa prose outside framework knowledge routing`
+    );
+  }
+});
+
 async function markdownFiles(dir) {
   const entries = await readdir(dir, { withFileTypes: true });
   const files = [];

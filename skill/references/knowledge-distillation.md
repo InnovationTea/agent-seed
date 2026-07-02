@@ -36,7 +36,7 @@ Cover these categories unless the project scope makes one irrelevant:
 - **Golden path**: The shortest reliable path from fresh checkout to a useful development loop.
 - **Bootstrap blockers**: Local tools, versions, credentials, services, data, network access, generated files, and machine-specific assumptions.
 - **Tooling inventory**: Approved skills, recommended external plugins, bundled packages, platform skills, scripts, CLIs, code generators, validators, and internal tools agents should use instead of improvising.
-- **Framework inventory**: Common, private, vendor, or internally named frameworks; framework-owned files; generated-code boundaries; manifests; lifecycle hooks; required SDKs; and framework-specific commands.
+- **Framework inventory**: Common, private, vendor, internally named, or preset-supported frameworks; built-in and project-local framework knowledge sources; framework-owned files; generated-code boundaries; manifests; lifecycle hooks; required SDKs; and framework-specific commands.
 - **Architecture map**: Module boundaries, key entry points, data flow, ownership boundaries, and where not to make cross-cutting changes.
 - **Change recipes**: Where to edit for common tasks, which files must change together, and which checks prove the change worked.
 - **Debug playbooks**: Common symptoms, logs to inspect, diagnostic commands, likely causes, and recovery steps.
@@ -49,6 +49,7 @@ Cover these categories unless the project scope makes one irrelevant:
 Label source when the distinction matters:
 
 - `Repo-confirmed`: Found directly in project files.
+- `Preset`: Built-in or project-local framework knowledge used as scan guidance, owner-question input, or a checklist, but not confirmed target-project fact.
 - `Owner-confirmed`: Stated by the knowledgeable developer as an operational fact.
 - `Preference`: Team or maintainer preference.
 - `Risk judgment`: Human judgment about danger, blast radius, or review priority.
@@ -85,6 +86,24 @@ Use this structure before generating files:
 For each approved skill, script, or internal tool, capture exact name/path, trigger task, required inputs/context, working directory or arguments, success signal, common failure recovery, inappropriate use cases, expected output, and safety level: autonomous, ask first, or never run.
 
 Ask targeted questions when scripts or skills are implied but undocumented.
+
+## Framework Knowledge Sources
+
+Use this structure before generating files when built-in or project-local framework knowledge participates in the scan:
+
+```markdown
+## Framework Knowledge Sources
+- Framework:
+- Source: Built-in preset, project-local preset, repo evidence, owner answer, or unknown.
+- Registry entry:
+- Knowledge file:
+- Matching evidence:
+- Confirmed facts:
+- Questions still needed:
+- Safety level:
+```
+
+For each source, distinguish preset scan guidance from confirmed facts. A built-in or project-local preset may provide aliases, file patterns, likely questions, and safety reminders, but commands, generated-code boundaries, lifecycle semantics, and recovery steps need repository evidence or owner confirmation before they are written as facts.
 
 ## Recommended External Plugins
 

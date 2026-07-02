@@ -1,0 +1,89 @@
+{
+  "framework_knowledge": [
+    {
+      "name": "nuwa",
+      "display_name": "Nuwa",
+      "aliases": [
+        "nuwa",
+        "nuw",
+        "huawei nuwa",
+        "huaweicloud nuwa",
+        "harmony",
+        "openharmony",
+        "arkui",
+        "arkts",
+        "鸿蒙",
+        "女娲"
+      ],
+      "fingerprints": {
+        "search_terms": [
+          "nuwa",
+          "nuw",
+          "huawei",
+          "huaweicloud",
+          "harmony",
+          "openharmony",
+          "arkui",
+          "arkts",
+          "oh-package",
+          "build-profile",
+          "hvigor",
+          "ability",
+          "module.json5",
+          "app.json5",
+          "generated",
+          "generator",
+          "schema",
+          "dsl",
+          "lifecycle",
+          "route",
+          "router",
+          "page",
+          "component",
+          "service"
+        ],
+        "file_patterns": [
+          "oh-package.json5",
+          "build-profile.json5",
+          "hvigorfile.*",
+          "module.json5",
+          "app.json5",
+          "*nuwa*",
+          "*nuw*",
+          "*schema*",
+          "*generated*",
+          "*generator*",
+          "*route*",
+          "*router*"
+        ]
+      },
+      "knowledge_path": "references/frameworks/nuwa.md",
+      "project_local": {
+        "registry_paths": [
+          ".agents/framework-knowledge.json",
+          "agents.d/framework-knowledge.json"
+        ],
+        "knowledge_paths": [
+          "agents.d/frameworks/*.md",
+          "docs/agent-frameworks/*.md"
+        ]
+      },
+      "source_policy": {
+        "labels": [
+          "Preset",
+          "Repo-confirmed",
+          "Owner-confirmed",
+          "Inferred",
+          "Unknown"
+        ],
+        "preset_may_confirm_project_facts": false,
+        "conflicts_require_owner_resolution": true
+      },
+      "safety": {
+        "stay_inside_target_root": true,
+        "external_sdk_inspection_requires_user_request": true,
+        "generated_commands_require_repo_or_owner_confirmation": true
+      }
+    }
+  ]
+}
