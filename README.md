@@ -1,8 +1,8 @@
-# Agent Runbook Distiller
+# Agent Seed
 
-This repository contains the source and release tooling for the `agent-runbook-distiller` Codex skill.
+This repository contains the source and release tooling for the `agent-seed` Codex skill.
 
-`agent-runbook-distiller` distills repository evidence and owner knowledge into executable agent runbooks, review checkpoints, and project-local guidance. Its goal is to help coding agents develop in safe self-directed loops while humans focus on review, approval, and the few decisions that require project-owner judgment.
+`agent-seed` distills repository evidence and owner knowledge into executable agent runbooks, review checkpoints, and project-local guidance. Its goal is to seed a codebase with the knowledge coding agents need to develop in safe self-directed loops while humans focus on review, approval, and the few decisions that require project-owner judgment.
 
 ## Repository Layout
 
@@ -27,7 +27,7 @@ This repository contains the source and release tooling for the `agent-runbook-d
 `-- README.md
 ```
 
-The release package is built from `skill/` only. Root-level files such as this README, `Makefile`, and `tools/` are maintainer assets and are not copied into the published skill artifact. The `skill/` directory name is intentionally generic: it is the release package source root, so its contents become the top level of the published `agent-runbook-distiller` skill.
+The release package is built from `skill/` only. Root-level files such as this README, `Makefile`, and `tools/` are maintainer assets and are not copied into the published skill artifact. The `skill/` directory name is intentionally generic: it is the release package source root, so its contents become the top level of the published `agent-seed` skill.
 
 ## What The Skill Produces
 
@@ -78,8 +78,8 @@ node tools/release.mjs
 `make release` writes:
 
 ```text
-outputs/agent-runbook-distiller/
-outputs/agent-runbook-distiller.zip
+outputs/agent-seed/
+outputs/agent-seed.zip
 ```
 
 The expanded directory is useful for inspection. The zip file is the distributable artifact. The zip root contains `SKILL.md` directly, not an extra nested wrapper directory.

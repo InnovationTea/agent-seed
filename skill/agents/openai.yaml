@@ -1,4 +1,4 @@
 interface:
-  display_name: "Agent Runbook Distiller"
+  display_name: "Agent Seed"
   short_description: "Distill project knowledge, framework conventions, and agent runbooks."
-  default_prompt: "Use $agent-runbook-distiller to interview me as the knowledgeable developer, scan this project including private framework conventions, distill or update setup/build/test/debug/tooling knowledge into AGENTS.md plus agents.d runbooks, inspect bundled-packages.json, and offer default bundled package installs that require approval before running them."
+  default_prompt: "Use $agent-seed to interview me as the knowledgeable developer, scan this project including private framework conventions, distill or update setup/build/test/debug/tooling knowledge into AGENTS.md plus agents.d runbooks, inspect bundled-packages.json, and offer default bundled package installs that require approval before running them."

@@ -7,12 +7,12 @@ import test from "node:test";
 import { releaseSkill } from "./release.mjs";
 
 test("releaseSkill creates an expanded skill directory and zip package", async () => {
-  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-runbook-distiller-release-"));
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-"));
 
   try {
     const skillDir = path.join(rootDir, "skill");
     await mkdir(path.join(skillDir, "references"), { recursive: true });
-    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: agent-runbook-distiller\n---\n");
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
     await writeFile(path.join(skillDir, "references", "guide.md"), "# Guide\n");
 
     const result = await releaseSkill({
@@ -21,9 +21,9 @@ test("releaseSkill creates an expanded skill directory and zip package", async (
       outputDir: path.join(rootDir, "outputs"),
     });
 
-    assert.equal(path.basename(result.expandedDir), "agent-runbook-distiller");
-    assert.equal(path.basename(result.zipPath), "agent-runbook-distiller.zip");
-    assert.equal(await readFile(path.join(result.expandedDir, "SKILL.md"), "utf8"), "---\nname: agent-runbook-distiller\n---\n");
+    assert.equal(path.basename(result.expandedDir), "agent-seed");
+    assert.equal(path.basename(result.zipPath), "agent-seed.zip");
+    assert.equal(await readFile(path.join(result.expandedDir, "SKILL.md"), "utf8"), "---\nname: agent-seed\n---\n");
     assert.equal(await readFile(path.join(result.expandedDir, "references", "guide.md"), "utf8"), "# Guide\n");
 
     const zipStat = await stat(result.zipPath);
@@ -115,6 +115,18 @@ test("Codex default prompt tells agents to offer default bundled package install
   assert.match(prompt, /approval/i);
 });
 
+test("skill identity uses Agent Seed naming", async () => {
+  const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
+  const promptPath = path.join(process.cwd(), "skill", "agents", "openai.yaml");
+  const skill = await readFile(skillPath, "utf8");
+  const prompt = await readFile(promptPath, "utf8");
+
+  assert.match(skill, /^name: agent-seed$/m);
+  assert.match(skill, /^# Agent Seed$/m);
+  assert.match(prompt, /display_name: "Agent Seed"/);
+  assert.match(prompt, /\$agent-seed/);
+});
+
 test("core skill instructions require cross-platform default package install offers", async () => {
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
@@ -136,7 +148,7 @@ test("knowledge asset write mode is persistent and documented across write workf
 
   for (const filePath of files) {
     const content = await readFile(filePath, "utf8");
-    assert.match(content, /\.agents\/agent-runbook-distiller\.json/, path.relative(rootDir, filePath));
+    assert.match(content, /\.agents\/agent-seed\.json/, path.relative(rootDir, filePath));
     assert.match(content, /knowledge_asset_write_mode/, path.relative(rootDir, filePath));
     assert.match(content, /ask-each-change/, path.relative(rootDir, filePath));
     assert.match(content, /agent-approve/, path.relative(rootDir, filePath));

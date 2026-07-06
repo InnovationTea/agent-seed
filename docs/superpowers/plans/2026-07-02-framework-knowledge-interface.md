@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a built-in and project-local framework knowledge interface to `agent-runbook-distiller`, with Nuwa as the first built-in framework knowledge pack.
+**Goal:** Add a built-in and project-local framework knowledge interface to `agent-seed`, with Nuwa as the first built-in framework knowledge pack.
 
 **Architecture:** Use a configuration-driven registry at `skill/framework-knowledge.json` and Markdown knowledge packs under `skill/references/frameworks/`. The skill workflow reads the registry during framework fingerprinting, stays inside the target root for project-local knowledge, and labels preset knowledge separately from confirmed repository or owner facts.
 
@@ -454,17 +454,17 @@ Expected: PASS with all tests passing.
 
 Run: `node tools/release.mjs`
 
-Expected: Writes `outputs/agent-runbook-distiller/` and `outputs/agent-runbook-distiller.zip`.
+Expected: Writes `outputs/agent-seed/` and `outputs/agent-seed.zip`.
 
 - [ ] **Step 3: Inspect release package contents**
 
-Run: `rg --files outputs/agent-runbook-distiller`
+Run: `rg --files outputs/agent-seed`
 
 Expected: Output includes:
 
 ```text
-outputs/agent-runbook-distiller/framework-knowledge.json
-outputs/agent-runbook-distiller/references/frameworks/nuwa.md
+outputs/agent-seed/framework-knowledge.json
+outputs/agent-seed/references/frameworks/nuwa.md
 ```
 
 - [ ] **Step 4: Check working tree**

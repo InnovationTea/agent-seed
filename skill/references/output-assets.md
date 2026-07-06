@@ -25,9 +25,9 @@ Generate or propose a project-specific skill when repeated workflows should trig
 
 ## Knowledge Asset Write Mode
 
-Resolve the write mode before creating or editing `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, or `.agents/agent-runbook-distiller.json`.
+Resolve the write mode before creating or editing `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, or `.agents/agent-seed.json`.
 
-Persist the target project's mode in `.agents/agent-runbook-distiller.json`:
+Persist the target project's mode in `.agents/agent-seed.json`:
 
 ```json
 {
@@ -41,7 +41,7 @@ Supported values:
 - `agent-approve`: After the owner confirms the onboarding/update scope, create and edit in-scope knowledge assets autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Create, update, and reorganize knowledge assets directly inside the target project, then report the diff and verification. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
-The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-runbook-distiller.json`. If the config is missing, default to `ask-each-change` and ask whether to create `.agents/agent-runbook-distiller.json` with the selected mode.
+The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the config is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
 
 Recommend external platform plugins when a mature cross-project tool should be installed through Codex, Claude Code, OpenCode, or another platform's normal network-backed plugin flow instead of being bundled into the generated project assets.
 

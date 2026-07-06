@@ -1,9 +1,9 @@
 ---
-name: agent-runbook-distiller
+name: agent-seed
 description: Use when the user asks to distill repository evidence and owner knowledge into agent runbooks, make a repository AI-agent ready, generate or update AGENTS.md/agents.d/CLAUDE.md, prepare Codex/Claude/OpenCode to work in an existing codebase, identify common or private framework conventions during repository scans, capture project setup/build/test/debug/tooling knowledge from a knowledgeable developer, define human review checkpoints for agent self-directed development loops, recommend configured external agent plugins, install or document bundled packages or platform skills, or add newly discovered project knowledge to reusable agent guidance assets.
 ---
 
-# Agent Runbook Distiller
+# Agent Seed
 
 Distill repository evidence and owner knowledge into executable agent runbooks, review checkpoints, and project-local guidance that let coding agents develop in safe self-directed loops.
 
@@ -11,7 +11,7 @@ Default to senior-developer knowledge distillation. The normal output is `AGENTS
 
 This skill can also distribute bundled direct skills listed in `bundled-skills.json` and bundled packages listed in `bundled-packages.json`. A bundled direct skill is a simple skill directory copied into supported project-local platform paths. A bundled package may contain one or more platform-specific skills and may be configured as a default project-local install candidate. Every onboarding run for Codex, Claude Code, OpenCode, or another supported agent must inspect these manifests; when `default_install.offer_by_default` is set, proactively offer the install and run it only after user approval.
 
-Persist the target project's knowledge asset write mode in `.agents/agent-runbook-distiller.json`:
+Persist the target project's knowledge asset write mode in `.agents/agent-seed.json`:
 
 ```json
 {
@@ -19,7 +19,7 @@ Persist the target project's knowledge asset write mode in `.agents/agent-runboo
 }
 ```
 
-Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over the project config, then `.agents/agent-runbook-distiller.json`, then default to `ask-each-change`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, and generated project skill guidance. If the config file is missing during onboarding, ask whether to create it with the selected mode.
+Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over the project config, then `.agents/agent-seed.json`, then default to `ask-each-change`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, and generated project skill guidance. If the config file is missing during onboarding, ask whether to create it with the selected mode.
 
 Treat external agent workflow suites listed in `recommended-external-plugins.json` as recommended platform plugins, not bundled packages, unless the user explicitly asks to vendor them. If a configured plugin applies to the owner's platform and is not visible in the current agent environment or project platform config, recommend installing it through the platform's normal network-backed plugin flow instead of copying its internals into the project.
 
@@ -45,7 +45,7 @@ The output files are internal engineering guides and automation runbooks, not co
 - Distill tacit knowledge into executable instructions, recipes, playbooks, and handoff criteria, not background explanation.
 - Preserve existing instruction files unless the user confirms replacement.
 - Resolve `knowledge_asset_write_mode` before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets directly and report diffs, but still ask before secrets, production actions, destructive changes, installs, hooks, external network use, or personal/global directory writes.
-- Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-runbook-distiller skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` unless the user explicitly names one of them as the target project.
+- Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-seed skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` unless the user explicitly names one of them as the target project.
 - Do not run install, build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment.
 - Install bundled direct skills according to `bundled-skills.json`: proactively offer configured default project-local installs, install only platforms the owner explicitly uses or the repository evidence detects, and get user approval before copying files into the target project.
 - Install bundled packages according to `bundled-packages.json`: proactively offer configured default project-local installs, but get user approval before running installers that modify the target project.
@@ -76,17 +76,17 @@ Determine the target project root before scanning:
 
 - If the user provides a project path, use that path as the target root.
 - If the current working directory is the project to onboard, use the current working directory as the target root.
-- If the current working directory is this `agent-runbook-distiller` skill, another skill source directory, `$CODEX_HOME`, or a Codex plugin/cache directory, do not scan it as the target project. Ask for the target project path.
+- If the current working directory is this `agent-seed` skill, another skill source directory, `$CODEX_HOME`, or a Codex plugin/cache directory, do not scan it as the target project. Ask for the target project path.
 - Keep all repository scans, instruction-file checks, and evidence reads inside the target root unless the user explicitly asks to inspect an external dependency, installed skill, or package source.
 
-Ask early which workflows should become agent-runnable, which parts usually require a familiar human, which skills/scripts/tools agents should use, whether any external plugins should be recommended, whether any bundled packages or platform skills should be created or installed, which agent platforms matter, whether to generate a reusable project skill now or only propose its shape, and which `knowledge_asset_write_mode` to use when `.agents/agent-runbook-distiller.json` is absent.
+Ask early which workflows should become agent-runnable, which parts usually require a familiar human, which skills/scripts/tools agents should use, whether any external plugins should be recommended, whether any bundled packages or platform skills should be created or installed, which agent platforms matter, whether to generate a reusable project skill now or only propose its shape, and which `knowledge_asset_write_mode` to use when `.agents/agent-seed.json` is absent.
 
 ### 1. Inspect Existing Agent Instructions
 
 Check whether instruction files already exist:
 
 ```bash
-rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*' -g '.agents/agent-runbook-distiller.json'
+rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*' -g '.agents/agent-seed.json'
 ```
 
 If any instruction file exists, read it before doing anything else. Ask whether to update it, replace it, or create a draft alongside it. Do not overwrite without confirmation.
@@ -105,7 +105,7 @@ Read existing files from this evidence set when present:
 - Language/package metadata: `package.json`, lockfiles, `pyproject.toml`, `requirements*.txt`, `Pipfile`, `poetry.lock`, `pom.xml`, Gradle files, `go.mod`, `Cargo.toml`.
 - Build and runtime config: `Makefile`, `justfile`, `Taskfile.yml`, `Dockerfile`, `docker-compose*.yml`.
 - CI/CD: `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`.
-- Agent/tool config: `.agents/agent-runbook-distiller.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`.
+- Agent/tool config: `.agents/agent-seed.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`.
 - Automation folders: `scripts/**`, `tools/**`, `bin/**`, `tasks/**`.
 - Project-bundled packages and skills: `bundled-skills.json`, `bundled-skills/**/SKILL.md`, `bundled-skills/**/agents/openai.yaml`, `bundled-packages.json`, `packages/**/SKILL.md`, `packages/**/skills/**/SKILL.md`, `packages/**/.claude/skills/**/SKILL.md`, `packages/**/.opencode/skills/**/SKILL.md`, `skills/*/SKILL.md`, `skills/**/agents/openai.yaml`, and directly related `scripts/`, `references/`, or `assets/`.
 - Linter, formatter, type-checker, and test configuration.
@@ -175,7 +175,7 @@ Prioritize executable answers: exact commands, required inputs, expected success
 
 For new onboarding assets, read `references/output-assets.md`.
 
-Always generate or update `AGENTS.md` unless the user explicitly asks for another file only. Generate `agents.d/` by default for distilled knowledge. Generate platform-specific files only for requested or owner-used platforms. Before creating or editing any of these assets, apply the resolved `knowledge_asset_write_mode` from the current request or `.agents/agent-runbook-distiller.json`.
+Always generate or update `AGENTS.md` unless the user explicitly asks for another file only. Generate `agents.d/` by default for distilled knowledge. Generate platform-specific files only for requested or owner-used platforms. Before creating or editing any of these assets, apply the resolved `knowledge_asset_write_mode` from the current request or `.agents/agent-seed.json`.
 
 For later knowledge additions, read `references/update-existing-assets.md`, classify the new knowledge into the right file, and use the smallest coherent edit.
 

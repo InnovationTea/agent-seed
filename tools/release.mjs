@@ -3,7 +3,7 @@ import { cp, mkdir, rm, stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-const DEFAULT_PACKAGE_NAME = "agent-runbook-distiller";
+const DEFAULT_PACKAGE_NAME = "agent-seed";
 
 export async function releaseSkill({
   rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),

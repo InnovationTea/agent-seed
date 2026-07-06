@@ -6,7 +6,7 @@ Trigger phrases include "remember this", "add this to AGENTS.md", "update agents
 
 ## Knowledge Asset Write Mode
 
-Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-runbook-distiller.json`. If it is missing, default to `ask-each-change` and ask whether to create `.agents/agent-runbook-distiller.json` with the selected mode.
+Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
 
 Persist the mode as:
 
@@ -18,13 +18,13 @@ Persist the mode as:
 
 Supported values:
 
-- `ask-each-change`: Ask before each edit to `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, bundled manifests, or `.agents/agent-runbook-distiller.json`.
+- `ask-each-change`: Ask before each edit to `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, bundled manifests, or `.agents/agent-seed.json`.
 - `agent-approve`: After the owner confirms the update scope, make minimal in-scope edits autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Make in-scope knowledge asset edits directly and report the diff plus fresh-agent dry-run result. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
 ## Update Flow
 
-1. Resolve `knowledge_asset_write_mode` from the current request or `.agents/agent-runbook-distiller.json`.
+1. Resolve `knowledge_asset_write_mode` from the current request or `.agents/agent-seed.json`.
 2. Read existing `AGENTS.md`, relevant `agents.d/` files, platform files, and any project-specific skill before editing.
 3. Classify the knowledge into the right home.
 4. Preserve or add source labels.

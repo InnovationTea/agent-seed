@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Add a framework knowledge interface to `agent-runbook-distiller` so scans can use curated framework guidance in addition to repository evidence and owner interviews. The first built-in knowledge pack targets Nuwa, while the interface also supports target-project-local knowledge that can supplement or override built-in guidance.
+Add a framework knowledge interface to `agent-seed` so scans can use curated framework guidance in addition to repository evidence and owner interviews. The first built-in knowledge pack targets Nuwa, while the interface also supports target-project-local knowledge that can supplement or override built-in guidance.
 
 ## Goals
 
