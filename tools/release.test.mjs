@@ -91,6 +91,63 @@ test("bundled install manifests require activation preflight handling", async ()
   }
 });
 
+test("bundled direct skill manifest registers every bundled skill directory", async () => {
+  const rootDir = process.cwd();
+  const bundledSkillsDir = path.join(rootDir, "skill", "bundled-skills");
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
+  const registeredNames = new Set(config.bundled_skills.map((skill) => skill.name));
+  const directoryNames = (await readdir(bundledSkillsDir, { withFileTypes: true }))
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name)
+    .sort();
+
+  for (const directoryName of directoryNames) {
+    assert.ok(registeredNames.has(directoryName), `missing bundled-skills.json entry for ${directoryName}`);
+  }
+
+  for (const skill of config.bundled_skills) {
+    assert.equal(typeof skill.source_path, "string");
+    await stat(path.join(rootDir, "skill", skill.source_path, "SKILL.md"));
+  }
+});
+
+test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
+
+  for (const skill of config.bundled_skills) {
+    const codex = skill.platforms.find((platform) => platform.platform === "codex");
+    assert.ok(codex, `${skill.name} must define Codex platform metadata`);
+    assert.ok(Array.isArray(codex.detection_paths));
+    assert.equal(codex.detection_paths.includes("AGENTS.md"), false, `${skill.name} Codex detection should not use AGENTS.md`);
+  }
+});
+
+test("external plugin config recognizes both OpenCode config file names", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "external-plugins.json"), "utf8"));
+  const opencodePlatforms = config.recommended_external_plugins
+    .flatMap((plugin) => plugin.platforms)
+    .filter((platform) => platform.platform === "opencode");
+
+  assert.ok(opencodePlatforms.length > 0);
+
+  for (const platform of opencodePlatforms) {
+    const searchableText = [platform.install_action, platform.verification, ...platform.detection_evidence].join("\n");
+    assert.match(searchableText, /opencode\.json/);
+    assert.match(searchableText, /\.opencode\.yaml/);
+  }
+});
+
+test("gitpush verifies required remotes before creating a commit", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "bundled-skills", "gitpush", "skill", "SKILL.md"), "utf8");
+
+  assert.match(skill, /fork/i);
+  assert.ok(skill.indexOf("git remote get-url origin") < skill.indexOf('git commit -m "提交信息"'));
+  assert.ok(skill.indexOf("git remote get-url upstream") < skill.indexOf('git commit -m "提交信息"'));
+});
+
 test("core skill instructions define activation preflight as a hard gate", async () => {
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
@@ -101,6 +158,15 @@ test("core skill instructions define activation preflight as a hard gate", async
   assert.match(skill, /Do not continue with onboarding work until each applicable default or recommended item/i);
   assert.match(skill, /accepted, declined, already available, platform-inapplicable, or explicitly deferred/i);
   assert.match(skill, /Record the reason when an applicable install is skipped/i);
+});
+
+test("activation preflight separates manifest inspection from repository evidence based applicability", async () => {
+  const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
+  const skill = await readFile(skillPath, "utf8");
+
+  assert.match(skill, /First, inspect `external-plugins\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
+  assert.match(skill, /After the target root is known, perform a minimal platform-evidence scan/i);
+  assert.match(skill, /Do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed/i);
 });
 
 test("external plugins include DevEco CLI for HarmonyOS projects", async () => {

@@ -38,9 +38,10 @@
         },
         {
           "platform": "opencode",
-          "install_action": "Add \"superpowers@git+https://github.com/obra/superpowers.git\" to the plugin array in opencode.json.",
+          "install_action": "Add \"superpowers@git+https://github.com/obra/superpowers.git\" to the plugin array in opencode.json or .opencode.yaml, matching the target project's existing OpenCode config file.",
           "detection_evidence": [
             "opencode.json already references superpowers.",
+            ".opencode.yaml already references superpowers.",
             "OpenCode skill list includes Superpowers skills."
           ],
           "verification": "Confirm OpenCode loads the plugin and lists the Superpowers skills."
@@ -88,6 +89,7 @@
           "detection_evidence": [
             "HarmonyOS manifests such as oh-package.json5, build-profile.json5, module.json5, or app.json5 exist in the target project.",
             "Project files mention DevEco Studio, DevEco Toolbox, deveco-toolbox, deveco-mcp-server, @deveco-codegenie/mcp, devecocli, @deveco/deveco-cli, ohpm, hvigor, hdc, hilog, emulator, ArkUI, ArkTS, HarmonyOS, or OpenHarmony.",
+            "OpenCode configuration exists in opencode.json or .opencode.yaml.",
             "devecocli --version succeeds in the current environment.",
             "Owner confirms the project is a HarmonyOS/OpenHarmony/ArkUI/ArkTS application."
           ],

@@ -266,7 +266,7 @@ For each bundled direct skill, document:
 - Verification step after install for each selected platform.
 - Safety level: autonomous, ask first, or never install automatically.
 
-Install direct bundled skills only for platforms the owner explicitly uses or repository evidence detects. Detection evidence includes owner answers and platform-specific project files such as `.codex`, `skills/`, `AGENTS.md`, `.claude`, `CLAUDE.md`, `.opencode`, or `.opencode.yaml`. Do not create platform directories for unknown or unused platforms by default.
+Install direct bundled skills only for platforms the owner explicitly uses or repository evidence detects. Detection evidence includes owner answers and platform-specific project files such as `.codex`, `skills/`, `.claude`, `CLAUDE.md`, `.opencode`, `opencode.json`, or `.opencode.yaml`. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. Do not create platform directories for unknown or unused platforms by default.
 
 When `bundled-skills.json` marks `default_install.offer_by_default`, proactively offer to copy the direct skill into the selected project-local platform paths during onboarding. Run the copy only after user approval because it modifies the target project. Do not install bundled direct skills into personal/global skill directories unless the user explicitly asks for personal/global installation.
 

@@ -25,8 +25,7 @@
           "overlay_path": "bundled-skills/gitpush/overlays/codex",
           "detection_paths": [
             ".codex",
-            "skills",
-            "AGENTS.md"
+            "skills"
           ],
           "verification": "SKILL.md exists at skills/gitpush/SKILL.md"
         },
@@ -44,6 +43,7 @@
           "target_path": ".opencode/skills/gitpush",
           "detection_paths": [
             ".opencode",
+            "opencode.json",
             ".opencode.yaml"
           ],
           "verification": "SKILL.md exists at .opencode/skills/gitpush/SKILL.md"
@@ -53,6 +53,59 @@
         "skills/gitpush",
         ".claude/skills/gitpush",
         ".opencode/skills/gitpush"
+      ],
+      "safety": {
+        "personal_directory_install_requires_explicit_request": true,
+        "existing_target_requires_user_decision": true
+      }
+    },
+    {
+      "name": "gitsync",
+      "version": "local",
+      "kind": "multi-platform-direct-skill",
+      "source_path": "bundled-skills/gitsync/skill",
+      "purpose": "Sync a fork's mainline branch from upstream to the local mainline and push it to origin without merge commits.",
+      "default_install": {
+        "mode": "project-local",
+        "offer_by_default": true,
+        "requires_user_approval": true,
+        "install_only_for_detected_or_requested_platforms": true
+      },
+      "platforms": [
+        {
+          "platform": "codex",
+          "target_path": "skills/gitsync",
+          "overlay_path": "bundled-skills/gitsync/overlays/codex",
+          "detection_paths": [
+            ".codex",
+            "skills"
+          ],
+          "verification": "SKILL.md exists at skills/gitsync/SKILL.md"
+        },
+        {
+          "platform": "claude",
+          "target_path": ".claude/skills/gitsync",
+          "detection_paths": [
+            ".claude",
+            "CLAUDE.md"
+          ],
+          "verification": "SKILL.md exists at .claude/skills/gitsync/SKILL.md"
+        },
+        {
+          "platform": "opencode",
+          "target_path": ".opencode/skills/gitsync",
+          "detection_paths": [
+            ".opencode",
+            "opencode.json",
+            ".opencode.yaml"
+          ],
+          "verification": "SKILL.md exists at .opencode/skills/gitsync/SKILL.md"
+        }
+      ],
+      "writes": [
+        "skills/gitsync",
+        ".claude/skills/gitsync",
+        ".opencode/skills/gitsync"
       ],
       "safety": {
         "personal_directory_install_requires_explicit_request": true,

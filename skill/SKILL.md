@@ -13,11 +13,11 @@ This skill can also distribute bundled direct skills listed in `bundled-skills.j
 
 ## Activation Preflight
 
-Before scanning, interviewing, generating files, or answering onboarding conclusions, must inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json`. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
+Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
 
-Identify the current agent platform from the active environment, user request, and repository evidence. For each configured external plugin that applies to the platform and is not already visible, offer the platform-native install action from `external-plugins.json`. For each bundled direct skill or bundled package with `default_install.offer_by_default: true`, offer the configured project-local install for platforms the owner explicitly uses or repository evidence detects.
+After the target root is known, perform a minimal platform-evidence scan inside that root before deciding which manifest entries apply. Identify the current agent platform from the active environment, user request, and platform evidence such as `.codex/`, `skills/`, `.claude/`, `CLAUDE.md`, `.opencode/`, `opencode.json`, or `.opencode.yaml`. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. For each configured external plugin that applies to the platform and is not already visible, offer the platform-native install action from `external-plugins.json`. For each bundled direct skill or bundled package with `default_install.offer_by_default: true`, offer the configured project-local install for platforms the owner explicitly uses or repository evidence detects.
 
-Do not continue with onboarding work until each applicable default or recommended item is accepted, declined, already available, platform-inapplicable, or explicitly deferred. Record the reason when an applicable install is skipped. Never run an install command, copy skill files, modify hooks, use network access, or write personal/global directories without owner approval.
+Do not continue with onboarding work until each applicable default or recommended item is accepted, declined, already available, platform-inapplicable, or explicitly deferred. Specifically, do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed until this is resolved. Record the reason when an applicable install is skipped. Never run an install command, copy skill files, modify hooks, use network access, or write personal/global directories without owner approval.
 
 Persist the target project's knowledge asset write mode in `.agents/agent-seed.json`:
 
@@ -54,7 +54,7 @@ The output files are internal engineering guides and automation runbooks, not co
 - Preserve existing instruction files unless the user confirms replacement.
 - Resolve `knowledge_asset_write_mode` before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets directly and report diffs, but still ask before secrets, production actions, destructive changes, installs, hooks, external network use, or personal/global directory writes.
 - Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-seed skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` unless the user explicitly names one of them as the target project.
-- Complete Activation Preflight before scan summaries, owner interviews, generated guidance, or claims that no installs are needed.
+- Complete Activation Preflight before scan summaries, owner interviews, generated guidance, or claims that no installs are needed; the preflight may include the minimal target-root platform-evidence scan described above.
 - Do not run install, build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment.
 - Install bundled direct skills according to `bundled-skills.json`: proactively offer configured default project-local installs, install only platforms the owner explicitly uses or the repository evidence detects, and get user approval before copying files into the target project.
 - Install bundled packages according to `bundled-packages.json`: proactively offer configured default project-local installs, but get user approval before running installers that modify the target project.
@@ -95,7 +95,7 @@ Ask early which workflows should become agent-runnable, which parts usually requ
 Check whether instruction files already exist:
 
 ```bash
-rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*' -g '.agents/agent-seed.json'
+rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.opencode/*' -g 'opencode.json' -g '.opencode.yaml' -g '.agents/agent-seed.json'
 ```
 
 If any instruction file exists, read it before doing anything else. Ask whether to update it, replace it, or create a draft alongside it. Do not overwrite without confirmation.
@@ -114,7 +114,7 @@ Read existing files from this evidence set when present:
 - Language/package metadata: `package.json`, lockfiles, `pyproject.toml`, `requirements*.txt`, `Pipfile`, `poetry.lock`, `pom.xml`, Gradle files, `go.mod`, `Cargo.toml`.
 - Build and runtime config: `Makefile`, `justfile`, `Taskfile.yml`, `Dockerfile`, `docker-compose*.yml`.
 - CI/CD: `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`.
-- Agent/tool config: `.agents/agent-seed.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`.
+- Agent/tool config: `.agents/agent-seed.json`, `opencode.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`.
 - Automation folders: `scripts/**`, `tools/**`, `bin/**`, `tasks/**`.
 - Project-bundled packages and skills: `bundled-skills.json`, `bundled-skills/**/SKILL.md`, `bundled-skills/**/agents/openai.yaml`, `bundled-packages.json`, `packages/**/SKILL.md`, `packages/**/skills/**/SKILL.md`, `packages/**/.claude/skills/**/SKILL.md`, `packages/**/.opencode/skills/**/SKILL.md`, `skills/*/SKILL.md`, `skills/**/agents/openai.yaml`, and directly related `scripts/`, `references/`, or `assets/`.
 - Linter, formatter, type-checker, and test configuration.

@@ -1,11 +1,11 @@
 ---
 name: gitpush
-description: Commit local Git changes and push them to the remote repository. Use when the user asks to run gitpush, /gitpush, commit and push current changes, or optionally run gitpush --squash to squash the current feature branch into one commit before pushing with --force-with-lease.
+description: Commit local Git changes and push them to the user's fork remote in a fork-based repository with origin and upstream configured. Use when the user asks to run gitpush, /gitpush, commit and push current changes, or optionally run gitpush --squash to squash the current feature branch into one commit before pushing with --force-with-lease.
 ---
 
 # GitPush
 
-Run one commit-and-push workflow. Treat squash as an optional preparation step, not a separate workflow.
+Run one fork-based commit-and-push workflow. Treat squash as an optional preparation step, not a separate workflow.
 
 ## Invocation
 
@@ -34,22 +34,32 @@ git branch --show-current
 git status --porcelain
 ```
 
-5. If squash mode is enabled, run the squash preparation steps below before generating the final commit message.
-6. Stage all current changes:
+5. Verify required remotes are configured before creating a commit:
+
+```bash
+git remote
+git remote get-url origin
+git remote get-url upstream
+```
+
+If `origin` is missing, stop and tell the user: `origin` must point to the user's fork of the source repository. If `upstream` is missing, stop and tell the user: `upstream` must point to the source repository.
+
+6. If squash mode is enabled, run the squash preparation steps below before generating the final commit message.
+7. Stage all current changes:
 
 ```bash
 git add -A
 ```
 
-7. Inspect staged changes:
+8. Inspect staged changes:
 
 ```bash
 git diff --cached --stat
 git diff --cached --name-status
 ```
 
-8. If there is no staged content, stop and report that there is nothing to commit.
-9. Generate a concise Chinese Conventional Commit message from the staged diff:
+9. If there is no staged content, stop and report that there is nothing to commit.
+10. Generate a concise Chinese Conventional Commit message from the staged diff:
 
 ```text
 feat: 描述
@@ -63,21 +73,11 @@ chore: 描述
 
 Use `chore: 更新代码` only when the type cannot be inferred.
 
-10. Commit:
+11. Commit:
 
 ```bash
 git commit -m "提交信息"
 ```
-
-11. Verify required remotes are configured:
-
-```bash
-git remote
-git remote get-url origin
-git remote get-url upstream
-```
-
-If `origin` is missing, stop and tell the user: `origin` must point to the user's fork of the source repository. If `upstream` is missing, stop and tell the user: `upstream` must point to the source repository.
 
 12. Push to the user's writable fork remote, `origin`:
 
