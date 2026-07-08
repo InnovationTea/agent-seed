@@ -232,6 +232,20 @@ test("activation preflight separates manifest inspection from repository evidenc
   assert.match(skill, /Do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed/i);
 });
 
+test("activation preflight falls back from project evidence to runtime and approved user-level evidence", async () => {
+  const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
+  const skill = await readFile(skillPath, "utf8");
+
+  assert.match(skill, /If target-root platform evidence is absent or ambiguous/i);
+  assert.match(skill, /current agent runtime/i);
+  assert.match(skill, /visible skills/i);
+  assert.match(skill, /Ask the owner before inspecting user-level agent configuration/i);
+  assert.match(skill, /\$CODEX_HOME/i);
+  assert.match(skill, /personal\/global directories/i);
+  assert.match(skill, /multiple platform candidates/i);
+  assert.match(skill, /ask the owner to choose/i);
+});
+
 test("external plugins include DevEco CLI for HarmonyOS projects", async () => {
   const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
