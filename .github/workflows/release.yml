@@ -30,19 +30,27 @@ jobs:
       - name: Show release files
         shell: pwsh
         run: |
-          Get-ChildItem -Path outputs -Filter *.zip -Recurse | ForEach-Object {
+          $files = @(
+            Get-ChildItem -Path outputs -Filter *.zip -Recurse -File
+            Get-ChildItem -Path outputs -Filter *-release.json -File
+          )
+
+          $files | ForEach-Object {
             Write-Host $_.FullName
           }
 
       - name: Create GitHub Release
         shell: pwsh
         run: |
-          $files = Get-ChildItem -Path outputs -Filter *.zip -Recurse | ForEach-Object {
+          $files = @(
+            Get-ChildItem -Path outputs -Filter *.zip -Recurse -File
+            Get-ChildItem -Path outputs -Filter *-release.json -File
+          ) | ForEach-Object {
             $_.FullName
           }
 
           if ($files.Count -eq 0) {
-            Write-Error "No zip files found under outputs/"
+            Write-Error "No release files found under outputs/"
             exit 1
           }
 

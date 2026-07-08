@@ -13,6 +13,7 @@ This repository contains the source and release tooling for the `agent-seed` Cod
 |   |-- agents/            # Platform agent metadata
 |   |-- references/        # Load-on-demand workflow references
 |   |   `-- frameworks/    # Built-in framework knowledge packs
+|   |-- scripts/           # Packaged helper scripts
 |   |-- bundled-skills/    # Direct skills distributed by this skill
 |   |-- packages/          # Bundled multi-platform skill packages
 |   |-- bundled-skills.json
@@ -66,11 +67,18 @@ Build the expanded release directory and zip package:
 make release
 ```
 
+Build with an explicit local version:
+
+```sh
+make release VERSION=v1.2.3
+```
+
 Equivalent direct commands:
 
 ```sh
 node --test tools/release.test.mjs
 node tools/release.mjs
+node tools/release.mjs --version v1.2.3
 ```
 
 ## Release Artifacts
@@ -80,6 +88,7 @@ node tools/release.mjs
 ```text
 outputs/agent-seed/
 outputs/agent-seed.zip
+outputs/agent-seed-release.json
 outputs/bundled-skills/<skill>/
 outputs/bundled-skills/<skill>.zip
 outputs/bundled-skills/<skill>-codex/
@@ -88,7 +97,25 @@ outputs/bundled-skills/<skill>-codex.zip
 
 The expanded directory is useful for inspection. The zip file is the distributable artifact. The zip root contains `SKILL.md` directly, not an extra nested wrapper directory.
 
+Tagged GitHub releases also include `agent-seed-release.json`, a machine-readable version manifest with the release version, repository, commit, asset names, sizes, and SHA-256 hashes. During packaging, `tools/release.mjs` injects `VERSION.json` into `outputs/agent-seed/` before creating `agent-seed.zip`; that file is not maintained by hand in `skill/`.
+
 Bundled direct skill artifacts are generated from `skill/bundled-skills.json`, not from hard-coded skill names. The plain `<skill>` artifact copies the configured `source_path` as a universal skill root. The `<skill>-codex` artifact starts from the same source and merges the configured Codex overlay, so it can be copied directly into a Codex project-local `skills/<skill>/` directory.
+
+## Skill Self Update
+
+Released `agent-seed` packages include `scripts/update-agent-seed.mjs`. From an installed release package, check for a newer GitHub release:
+
+```sh
+node scripts/update-agent-seed.mjs --json
+```
+
+Apply the update only after deciding to replace the installed skill directory:
+
+```sh
+node scripts/update-agent-seed.mjs --apply
+```
+
+The updater reads `VERSION.json` for the current repository/version, calls the GitHub latest release API, downloads `agent-seed.zip`, expands it, and replaces the current skill root with the expanded package. Replacement first moves the old skill root to a temporary backup, copies the new package into place, and rolls back the backup if the copy fails. Files that existed only in the old package are removed instead of lingering as stale leftovers. When running from the repository source tree instead of a release package, pass `--repository owner/repo` because `VERSION.json` is generated only during release packaging.
 
 ## Bundled Packages
 
@@ -107,6 +134,7 @@ Do not run the installer without explicit approval. It may write `.opencode/`, `
 
 - Edit source files under `skill/`.
 - Do not edit generated files under `outputs/`.
+- Do not edit packaged `VERSION.json` by hand; it is generated from the tag/ref environment during release.
 - Keep bundled direct skills registered in `skill/bundled-skills.json`.
 - Keep bundled packages registered in `skill/bundled-packages.json`.
 - Keep recommended external plugins registered in `skill/external-plugins.json`.

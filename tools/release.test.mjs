@@ -1,10 +1,15 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
+import { promisify } from "node:util";
 import test from "node:test";
 
 import { releaseSkill } from "./release.mjs";
+
+const execFileAsync = promisify(execFile);
 
 test("releaseSkill creates an expanded skill directory and zip package", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-"));
@@ -91,6 +96,140 @@ test("releaseSkill packages bundled direct skills from the manifest", async () =
 
     assert.ok((await stat(path.join(bundledOutputDir, "alpha-tool.zip"))).size > 0);
     assert.ok((await stat(path.join(bundledOutputDir, "alpha-tool-codex.zip"))).size > 0);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("releaseSkill writes package version metadata and a release manifest", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-version-"));
+
+  try {
+    const skillDir = path.join(rootDir, "skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
+
+    const result = await releaseSkill({
+      rootDir,
+      skillDir,
+      outputDir: path.join(rootDir, "outputs"),
+      version: "v2.3.4",
+      repository: "owner/agent-seed",
+      commit: "0123456789abcdef",
+    });
+
+    const versionMetadata = JSON.parse(await readFile(path.join(result.expandedDir, "VERSION.json"), "utf8"));
+    assert.equal(versionMetadata.name, "agent-seed");
+    assert.equal(versionMetadata.version, "v2.3.4");
+    assert.equal(versionMetadata.repository, "owner/agent-seed");
+    assert.equal(versionMetadata.commit, "0123456789abcdef");
+    assert.equal(versionMetadata.update.release_manifest, "agent-seed-release.json");
+
+    const manifestPath = path.join(rootDir, "outputs", "agent-seed-release.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    assert.equal(manifest.name, "agent-seed");
+    assert.equal(manifest.version, "v2.3.4");
+    assert.equal(manifest.repository, "owner/agent-seed");
+    assert.equal(manifest.commit, "0123456789abcdef");
+    assert.ok(
+      manifest.assets.some(
+        (asset) => asset.name === "agent-seed.zip" && asset.path === "agent-seed.zip" && /^[a-f0-9]{64}$/.test(asset.sha256),
+      ),
+    );
+    assert.ok(manifest.assets.some((asset) => asset.name === "agent-seed-release.json" && /^[a-f0-9]{64}$/.test(asset.sha256)));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("release CLI accepts a local version override", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-cli-version-"));
+
+  try {
+    const skillDir = path.join(rootDir, "skill");
+    await mkdir(skillDir, { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
+
+    await execFileAsync(process.execPath, [
+      path.join(process.cwd(), "tools", "release.mjs"),
+      "--root-dir",
+      rootDir,
+      "--version",
+      "v9.9.9",
+    ]);
+
+    const versionMetadata = JSON.parse(await readFile(path.join(rootDir, "outputs", "agent-seed", "VERSION.json"), "utf8"));
+    const releaseManifest = JSON.parse(await readFile(path.join(rootDir, "outputs", "agent-seed-release.json"), "utf8"));
+
+    assert.equal(versionMetadata.version, "v9.9.9");
+    assert.equal(releaseManifest.version, "v9.9.9");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater compares release versions and extracts the agent-seed asset", async () => {
+  const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+  const updater = await import(pathToFileURL(updaterPath).href);
+  const latestRelease = {
+    tag_name: "v2.0.0",
+    html_url: "https://github.com/owner/agent-seed/releases/tag/v2.0.0",
+    assets: [
+      {
+        name: "agent-seed-release.json",
+        browser_download_url: "https://example.invalid/agent-seed-release.json",
+      },
+      {
+        name: "agent-seed.zip",
+        browser_download_url: "https://example.invalid/agent-seed.zip",
+      },
+    ],
+  };
+
+  assert.equal(updater.compareVersions("v2.0.0", "v1.9.9") > 0, true);
+  assert.equal(updater.compareVersions("v1.2.0", "v1.2.0"), 0);
+  assert.equal(updater.compareVersions("v1.2.0", "v1.2.1") < 0, true);
+
+  const update = updater.buildUpdatePlan({
+    currentVersion: "v1.0.0",
+    latestRelease,
+    assetName: "agent-seed.zip",
+  });
+
+  assert.equal(update.hasUpdate, true);
+  assert.equal(update.currentVersion, "v1.0.0");
+  assert.equal(update.latestVersion, "v2.0.0");
+  assert.equal(update.asset.name, "agent-seed.zip");
+  assert.equal(update.releaseUrl, latestRelease.html_url);
+});
+
+test("agent-seed updater replaces the target directory without stale files", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-update-replace-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?replace=${Date.now()}`);
+    const sourceDir = path.join(rootDir, "new-skill");
+    const targetDir = path.join(rootDir, "target-skill");
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
+    await writeFile(path.join(targetDir, "stale.txt"), "old file\n");
+    await writeFile(path.join(targetDir, "SKILL.md"), "old skill\n");
+    await createTestZip(sourceDir, zipPath);
+
+    await updater.applyUpdate({
+      targetDir,
+      asset: {
+        name: "agent-seed.zip",
+        browser_download_url: pathToFileURL(zipPath).href,
+      },
+    });
+
+    assert.equal(await readFile(path.join(targetDir, "SKILL.md"), "utf8"), "---\nname: agent-seed\n---\n");
+    await assert.rejects(readFile(path.join(targetDir, "stale.txt"), "utf8"), /ENOENT/);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -439,6 +578,15 @@ test("core skill instructions define Superpowers SDD as an ask-first external wo
   assert.match(skill, /superpowers:receiving-code-review/);
 });
 
+test("core skill instructions document version metadata and self update flow", async () => {
+  const skill = await readFile(path.join(process.cwd(), "skill", "SKILL.md"), "utf8");
+
+  assert.match(skill, /VERSION\.json/);
+  assert.match(skill, /scripts\/update-agent-seed\.mjs/);
+  assert.match(skill, /--apply/);
+  assert.match(skill, /GitHub latest release/i);
+});
+
 test("framework knowledge config registers valid built-in knowledge packs", async () => {
   const rootDir = process.cwd();
   const configPath = path.join(rootDir, "skill", "framework-knowledge.json");
@@ -591,4 +739,19 @@ async function markdownFiles(dir) {
   }
 
   return files;
+}
+
+async function createTestZip(sourceDir, zipPath) {
+  await execFileAsync("powershell", [
+    "-NoProfile",
+    "-Command",
+    [
+      "& { param($sourceDir, $zipPath)",
+      "Add-Type -AssemblyName System.IO.Compression.FileSystem;",
+      "[System.IO.Compression.ZipFile]::CreateFromDirectory($sourceDir, $zipPath, [System.IO.Compression.CompressionLevel]::Optimal, $false)",
+      "}",
+    ].join(" "),
+    sourceDir,
+    zipPath,
+  ]);
 }

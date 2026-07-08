@@ -11,6 +11,26 @@ Default to senior-developer knowledge distillation. The normal output is `AGENTS
 
 This skill can also distribute bundled direct skills listed in `bundled-skills.json` and bundled packages listed in `bundled-packages.json`. A bundled direct skill is a simple skill directory copied into supported project-local platform paths. A bundled package may contain one or more platform-specific skills and may be configured as a default project-local install candidate. Every onboarding run for Codex, Claude Code, OpenCode, codeagent-cli (cac), or another supported agent must inspect these manifests; when `default_install.offer_by_default` is set, proactively offer the install and run it only after user approval.
 
+## Version And Self Update
+
+Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. When the owner asks whether Agent Seed is current, or asks to update this skill, read `VERSION.json` from this skill root and use `scripts/update-agent-seed.mjs` as the supported updater.
+
+The updater checks the GitHub latest release API for the configured repository and compares the local version with the latest tag:
+
+```bash
+node scripts/update-agent-seed.mjs --json
+```
+
+Treat the GitHub latest release check as network access. Ask before running it unless the owner explicitly requested an update check in the current turn. The updater only applies changes when `--apply` is passed:
+
+```bash
+node scripts/update-agent-seed.mjs --apply
+```
+
+Never run `--apply` without owner approval. If `VERSION.json` is missing because the skill is running from source instead of a release package, pass `--repository owner/repo` or explain that update metadata is only injected into tagged release artifacts.
+
+When `--apply` is approved, the updater downloads `agent-seed.zip`, expands it, moves the current skill root to a temporary backup, and copies the expanded package into the original target path. This is a replacement update, not a merge: files that existed only in the old skill directory are removed. If copying the new package fails, the updater restores the backup before reporting the error.
+
 ## Activation Preflight
 
 Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
