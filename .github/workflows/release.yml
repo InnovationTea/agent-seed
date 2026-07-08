@@ -13,9 +13,11 @@ jobs:
       contents: write
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-node@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
           node-version: "22"
 
@@ -25,12 +27,26 @@ jobs:
       - name: Build release
         run: node tools/release.mjs
 
+      - name: Show release files
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path outputs -Filter *.zip -Recurse | ForEach-Object {
+            Write-Host $_.FullName
+          }
+
       - name: Create GitHub Release
         shell: pwsh
         run: |
-          gh release create "${env:GITHUB_REF_NAME}" `
-            outputs/*.zip `
-            outputs/bundled-skills/**/*.zip `
+          $files = Get-ChildItem -Path outputs -Filter *.zip -Recurse | ForEach-Object {
+            $_.FullName
+          }
+
+          if ($files.Count -eq 0) {
+            Write-Error "No zip files found under outputs/"
+            exit 1
+          }
+
+          gh release create "${env:GITHUB_REF_NAME}" $files `
             --title "${env:GITHUB_REF_NAME}" `
             --generate-notes
         env:
