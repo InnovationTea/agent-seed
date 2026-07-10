@@ -1,5 +1,6 @@
 .worktrees/
 outputs/
+.agents/agent-seed.json
 .ai-tracking/pending-lines.json
 .ai-tracking/pending-commit.json
 .ai-tracking/tracking-message.txt

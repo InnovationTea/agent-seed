@@ -117,6 +117,17 @@ node scripts/update-agent-seed.mjs --apply
 
 The updater reads `VERSION.json` for the current repository/version, calls the GitHub latest release API, downloads `agent-seed.zip`, expands it, and replaces the current skill root with the expanded package. Replacement first moves the old skill root to a temporary backup, copies the new package into place, and rolls back the backup if the copy fails. Files that existed only in the old package are removed instead of lingering as stale leftovers. When running from the repository source tree instead of a release package, pass `--repository owner/repo` because `VERSION.json` is generated only during release packaging.
 
+When `HTTPS_PROXY`, `HTTP_PROXY`, or `ALL_PROXY` is set, the updater automatically restarts itself with Node's `--use-env-proxy` flag on Node versions that support it, so corporate proxy settings are applied to the GitHub release check and asset download.
+
+Proxy settings can also be persisted in the local `.agents/agent-seed.json` config, which is ignored by Git because it may contain machine-specific proxy or update permission state:
+
+```sh
+node scripts/update-agent-seed.mjs --set-https-proxy http://proxy.example:8080
+node scripts/update-agent-seed.mjs --set-no-proxy localhost,127.0.0.1
+```
+
+During Agent Seed activation, the skill treats update checks as an ask-first self-update preflight. If network access is declined, agents should record the check as deferred in `.agents/agent-seed.json` instead of silently treating the skill as current.
+
 ## Bundled Packages
 
 ### `git-code-tracker`

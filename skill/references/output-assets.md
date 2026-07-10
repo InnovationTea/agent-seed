@@ -27,7 +27,7 @@ Generate or propose a project-specific skill when repeated workflows should trig
 
 Resolve the write mode before creating or editing `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, generated project skills, or `.agents/agent-seed.json`.
 
-Persist the target project's mode in `.agents/agent-seed.json`:
+Persist local Agent Seed preferences and state, including the target project's write mode, in `.agents/agent-seed.json`:
 
 ```json
 {
@@ -42,6 +42,8 @@ Supported values:
 - `full-access`: Create, update, and reorganize knowledge assets directly inside the target project, then report the diff and verification. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
 The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the config is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
+
+`.agents/agent-seed.json` is local operator state and may contain machine-specific proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.json`. Do not document reusable project knowledge only in this file; put shared instructions in `AGENTS.md` or `agents.d/`.
 
 Recommend external platform plugins when a mature cross-project tool should be installed through Codex, Claude Code, OpenCode, or another platform's normal network-backed plugin flow instead of being bundled into the generated project assets.
 

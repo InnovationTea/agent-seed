@@ -203,6 +203,116 @@ test("agent-seed updater compares release versions and extracts the agent-seed a
   assert.equal(update.releaseUrl, latestRelease.html_url);
 });
 
+test("agent-seed updater opts into Node env proxy support when proxy variables are configured", async () => {
+  const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+  const updater = await import(`${pathToFileURL(updaterPath).href}?proxy=${Date.now()}`);
+  const reexec = updater.getEnvProxyReexecArgs({
+    argv: ["C:\\node\\node.exe", "C:\\agent-seed\\scripts\\update-agent-seed.mjs", "--json"],
+    execArgv: ["--trace-warnings"],
+    env: {
+      HTTPS_PROXY: "http://proxy.example:8080",
+    },
+    allowedFlags: new Set(["--use-env-proxy"]),
+  });
+
+  assert.deepEqual(reexec, {
+    nodeArgs: ["--trace-warnings", "--use-env-proxy", "C:\\agent-seed\\scripts\\update-agent-seed.mjs", "--json"],
+    env: {
+      HTTPS_PROXY: "http://proxy.example:8080",
+      AGENT_SEED_ENV_PROXY_REEXEC: "1",
+    },
+  });
+});
+
+test("agent-seed updater does not reexec when env proxy support is already active or unnecessary", async () => {
+  const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+  const updater = await import(`${pathToFileURL(updaterPath).href}?proxy-skip=${Date.now()}`);
+
+  assert.equal(
+    updater.getEnvProxyReexecArgs({
+      argv: ["node", "update-agent-seed.mjs", "--json"],
+      execArgv: ["--use-env-proxy"],
+      env: {
+        HTTPS_PROXY: "http://proxy.example:8080",
+      },
+      allowedFlags: new Set(["--use-env-proxy"]),
+    }),
+    null,
+  );
+  assert.equal(
+    updater.getEnvProxyReexecArgs({
+      argv: ["node", "update-agent-seed.mjs", "--json"],
+      execArgv: [],
+      env: {},
+      allowedFlags: new Set(["--use-env-proxy"]),
+    }),
+    null,
+  );
+});
+
+test("agent-seed updater persists proxy settings in the unified local config", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-proxy-config-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?proxy-config=${Date.now()}`);
+    const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(
+      configPath,
+      `${JSON.stringify(
+        {
+          knowledge_asset_write_mode: "agent-approve",
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    await updater.writeAgentSeedProxyConfig({
+      configPath,
+      proxy: {
+        httpsProxy: "http://proxy.example:8080",
+        noProxy: "localhost,127.0.0.1",
+      },
+    });
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(config.knowledge_asset_write_mode, "agent-approve");
+    assert.equal(config.self_update.proxy.https_proxy, "http://proxy.example:8080");
+    assert.equal(config.self_update.proxy.no_proxy, "localhost,127.0.0.1");
+
+    const env = updater.buildProxyEnvironment({}, config);
+    assert.equal(env.HTTPS_PROXY, "http://proxy.example:8080");
+    assert.equal(env.NO_PROXY, "localhost,127.0.0.1");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater records denied network checks as deferred local state", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-network-denied-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?network-denied=${Date.now()}`);
+    const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+
+    await updater.writeAgentSeedNetworkDeniedState({
+      configPath,
+      now: new Date("2026-07-10T00:00:00.000Z"),
+    });
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(config.self_update.last_check.status, "deferred");
+    assert.equal(config.self_update.last_check.reason, "network-denied");
+    assert.equal(config.self_update.last_check.checked_at, "2026-07-10T00:00:00.000Z");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("agent-seed updater replaces the target directory without stale files", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-update-replace-"));
 
@@ -584,6 +694,12 @@ test("knowledge asset write mode is persistent and documented across write workf
   assert.match(skill, /current user request wins/i);
 });
 
+test("local Agent Seed config is ignored by Git", async () => {
+  const gitignore = await readFile(path.join(process.cwd(), ".gitignore"), "utf8");
+
+  assert.match(gitignore, /^\.agents\/agent-seed\.json$/m);
+});
+
 test("external plugin prose stays configuration driven", async () => {
   const rootDir = process.cwd();
   const configPath = path.join(rootDir, "skill", "external-plugins.json");
@@ -637,6 +753,10 @@ test("core skill instructions document version metadata and self update flow", a
   assert.match(skill, /scripts\/update-agent-seed\.mjs/);
   assert.match(skill, /--apply/);
   assert.match(skill, /GitHub latest release/i);
+  assert.match(skill, /self-update preflight/i);
+  assert.match(skill, /network-denied/i);
+  assert.match(skill, /deferred/i);
+  assert.match(skill, /\.agents\/agent-seed\.json/);
 });
 
 test("framework knowledge config registers valid built-in knowledge packs", async () => {

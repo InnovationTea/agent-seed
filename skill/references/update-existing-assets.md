@@ -8,7 +8,7 @@ Trigger phrases include "remember this", "add this to AGENTS.md", "update agents
 
 Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
 
-Persist the mode as:
+Persist local Agent Seed preferences and state, including the write mode, as:
 
 ```json
 {
@@ -21,6 +21,8 @@ Supported values:
 - `ask-each-change`: Ask before each edit to `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, bundled manifests, or `.agents/agent-seed.json`.
 - `agent-approve`: After the owner confirms the update scope, make minimal in-scope edits autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Make in-scope knowledge asset edits directly and report the diff plus fresh-agent dry-run result. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
+
+`.agents/agent-seed.json` is local operator state and may contain proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.json`. Do not store reusable project knowledge only in this file; update `AGENTS.md` or `agents.d/` for shared guidance.
 
 ## Update Flow
 

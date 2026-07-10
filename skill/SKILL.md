@@ -13,7 +13,7 @@ This skill can also distribute bundled direct skills listed in `bundled-skills.j
 
 ## Version And Self Update
 
-Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. When the owner asks whether Agent Seed is current, or asks to update this skill, read `VERSION.json` from this skill root and use `scripts/update-agent-seed.mjs` as the supported updater.
+Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. On every Agent Seed activation, perform a local self-update preflight before onboarding conclusions: read `VERSION.json` from this skill root when present, read the local `.agents/agent-seed.json` state from the target root when present, and decide whether to offer a GitHub latest release check. This preflight is local unless the owner approves network access.
 
 The updater checks the GitHub latest release API for the configured repository and compares the local version with the latest tag:
 
@@ -21,7 +21,9 @@ The updater checks the GitHub latest release API for the configured repository a
 node scripts/update-agent-seed.mjs --json
 ```
 
-Treat the GitHub latest release check as network access. Ask before running it unless the owner explicitly requested an update check in the current turn. The updater only applies changes when `--apply` is passed:
+Treat the GitHub latest release check as network access. Ask before running it unless the owner explicitly requested an update check in the current turn. If the owner declines network access, do not treat Agent Seed as current or checked. Record the deferred update check in `.agents/agent-seed.json` under `self_update.last_check` with `status: "deferred"` and `reason: "network-denied"`, then continue the rest of the Activation Preflight and mention that update status is unknown. Keep reminding on later activations until a network-backed check succeeds, the owner disables `self_update.check_on_start`, or the owner explicitly defers the reminder again.
+
+The updater only applies changes when `--apply` is passed:
 
 ```bash
 node scripts/update-agent-seed.mjs --apply
@@ -31,6 +33,27 @@ Never run `--apply` without owner approval. If `VERSION.json` is missing because
 
 When `--apply` is approved, the updater downloads `agent-seed.zip`, expands it, moves the current skill root to a temporary backup, and copies the expanded package into the original target path. This is a replacement update, not a merge: files that existed only in the old skill directory are removed. If copying the new package fails, the updater restores the backup before reporting the error.
 
+Use `.agents/agent-seed.json` as the unified local Agent Seed config and state file. Proxy settings for the updater live under `self_update.proxy`; for example:
+
+```json
+{
+  "knowledge_asset_write_mode": "ask-each-change",
+  "self_update": {
+    "check_on_start": true,
+    "proxy": {
+      "https_proxy": "http://proxy.example:8080",
+      "no_proxy": "localhost,127.0.0.1"
+    },
+    "last_check": {
+      "status": "deferred",
+      "reason": "network-denied"
+    }
+  }
+}
+```
+
+This file may contain machine-specific proxy settings or local permission history. It is local state, not a shared onboarding asset. When creating it in a target project, ensure `.gitignore` contains `.agents/agent-seed.json`. To persist proxy settings through the updater, use `node scripts/update-agent-seed.mjs --set-https-proxy <url>` and optionally `--set-no-proxy <hosts>`.
+
 ## Activation Preflight
 
 Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-plugins.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
@@ -39,7 +62,7 @@ After the target root is known, perform a minimal platform-evidence scan inside 
 
 Do not continue with onboarding work until each applicable default or recommended item is accepted, declined, already available, platform-inapplicable, or explicitly deferred. Specifically, do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed until this is resolved. Record the reason when an applicable install is skipped. Never run an install command, copy skill files, modify hooks, use network access, or write personal/global directories without owner approval.
 
-Persist the target project's knowledge asset write mode in `.agents/agent-seed.json`:
+Persist the target project's local Agent Seed preferences and state in `.agents/agent-seed.json`:
 
 ```json
 {
