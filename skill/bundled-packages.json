@@ -22,7 +22,7 @@
         "mode": "project-local",
         "offer_by_default": true,
         "requires_user_approval": true,
-        "command": "node <package-dir>/install-to-project.js <target-project>",
+        "command": "node <package-dir>/install-to-project.js <target-project> --platform <detected-platform>",
         "writes": [
           ".opencode/skills/ai-code-tracker",
           ".claude/skills/ai-code-tracker",

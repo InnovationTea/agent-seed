@@ -11,6 +11,15 @@ import { releaseSkill } from "./release.mjs";
 
 const execFileAsync = promisify(execFile);
 
+async function exists(p) {
+  try {
+    await stat(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 test("releaseSkill creates an expanded skill directory and zip package", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-"));
 
@@ -497,6 +506,72 @@ test("git-code-tracker package supports codeagent-cli .cac installation", async 
   assert.match(installer, /sourceCacSkill/);
   assert.match(installer, /targetCacSkill/);
   assert.match(installer, /\.cac/);
+});
+
+test("git-code-tracker installer scopes installation to the selected platform", async () => {
+  const rootDir = process.cwd();
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-tracker-platform-"));
+
+  try {
+    await execFileAsync("git", ["init"], { cwd: targetDir });
+    await execFileAsync(process.execPath, [
+      path.join(rootDir, "skill", "packages", "git-code-tracker", "install-to-project.js"),
+      targetDir,
+      "--platform",
+      "claude",
+    ]);
+
+    assert.equal(await exists(path.join(targetDir, ".claude", "skills", "ai-code-tracker", "SKILL.md")), true);
+    assert.equal(await exists(path.join(targetDir, ".opencode", "skills", "ai-code-tracker", "SKILL.md")), false);
+    assert.equal(await exists(path.join(targetDir, ".cac", "skills", "ai-code-tracker", "SKILL.md")), false);
+
+    const agents = await readFile(path.join(targetDir, "AGENTS.md"), "utf8");
+    assert.match(agents, /load the Claude Code skill `ai-code-tracker`/);
+    assert.doesNotMatch(agents, /load the opencode skill `ai-code-tracker`/);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("git-code-tracker package install command requires detected platform selection", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-packages.json"), "utf8"));
+  const tracker = config.bundled_packages.find((entry) => entry.name === "git-code-tracker");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+
+  assert.ok(tracker, "expected git-code-tracker package entry");
+  assert.match(tracker.default_install.command, /--platform <detected-platform>/);
+  assert.match(outputAssets, /--platform <detected-platform>/);
+  assert.match(outputAssets, /detected or requested platform/i);
+});
+
+test("git-code-tracker platform skill docs and AGENTS rules are platform-specific", async () => {
+  const rootDir = process.cwd();
+  const packageDir = path.join(rootDir, "skill", "packages", "git-code-tracker");
+  const claudeSkill = await readFile(path.join(packageDir, ".claude", "skills", "ai-code-tracker", "SKILL.md"), "utf8");
+  const cacSkill = await readFile(path.join(packageDir, ".cac", "skills", "ai-code-tracker", "SKILL.md"), "utf8");
+  const claudeBundle = await readFile(
+    path.join(packageDir, ".claude", "skills", "ai-code-tracker", "scripts", "bundle.js"),
+    "utf8",
+  );
+  const cacBundle = await readFile(path.join(packageDir, ".cac", "skills", "ai-code-tracker", "scripts", "bundle.js"), "utf8");
+
+  assert.match(claudeSkill, /node \.claude\/skills\/ai-code-tracker\/scripts\/install\.js --check/);
+  assert.doesNotMatch(claudeSkill, /\.opencode\/skills\/ai-code-tracker\/scripts\/install\.js/);
+  assert.doesNotMatch(claudeSkill, /current opencode session/);
+
+  assert.match(cacSkill, /current codeagent-cli session/);
+  assert.doesNotMatch(cacSkill, /current opencode session/);
+
+  assert.match(claudeBundle, /skillLabel: "Claude Code"/);
+  assert.match(claudeBundle, /restart the current Claude Code session/);
+  assert.ok(claudeBundle.includes("load the ${info.skillLabel} skill \\`ai-code-tracker\\`"));
+  assert.doesNotMatch(claudeBundle, /load the opencode skill `ai-code-tracker`/);
+
+  assert.match(cacBundle, /skillLabel: "codeagent-cli"/);
+  assert.match(cacBundle, /restart the current codeagent-cli session/);
+  assert.ok(cacBundle.includes("load the ${info.skillLabel} skill \\`ai-code-tracker\\`"));
+  assert.doesNotMatch(cacBundle, /load the opencode skill `ai-code-tracker`/);
 });
 
 test("core instructions recognize codeagent-cli platform evidence", async () => {

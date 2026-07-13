@@ -8,7 +8,7 @@
 
 ```mermaid
 sequenceDiagram
-    participant AI as AI 工具 (Claude Code / opencode)
+    participant AI as AI 工具 (Claude Code / codeagent-cli / opencode)
     participant Hook as Hook 进程
     participant FS as 文件系统
     participant Git as Git
@@ -47,7 +47,7 @@ sequenceDiagram
     Hook->>FS: 移动 pending 文件到 archive/<timestamp>/
 ```
 
-1. AI 工具（opencode / Claude Code）编辑文件前，hook 捕获文件内容快照
+1. AI 工具（opencode / Claude Code / codeagent-cli）编辑文件前，hook 捕获文件内容快照
 2. 编辑完成后，hook 将文件新内容与快照做 diff，计算出 AI 新增的行
 3. 新增行记录到 `.ai-tracking/pending-lines.json`
 4. `git commit` 时，pre-commit hook 将 pending lines 与 staged diff 匹配，生成统计
@@ -72,16 +72,17 @@ sequenceDiagram
 |------|---------|
 | opencode | 插件系统（`tool.execute.before/after` 事件，内存中的 Map） |
 | Claude Code | Git hooks（每次工具调用启动独立进程，文件系统快照） |
+| codeagent-cli | Claude-compatible hooks in `.cac/settings.json` |
 
 ## 安装
 
-### 一键安装（同时支持 Claude Code 和 opencode）
+### 一键安装（同时支持 Claude Code、codeagent-cli 和 opencode）
 
 ```bash
 node install-to-project.js /path/to/your/project
 ```
 
-会将插件复制到目标项目的 `.opencode/skills/` 和 `.claude/skills/`，并自动运行安装脚本。
+会将插件复制到目标项目的 `.opencode/skills/`、`.claude/skills/` 和 `.cac/skills/`，并自动运行安装脚本。
 
 ### 手动安装
 
@@ -131,6 +132,29 @@ node --experimental-vm-modules .opencode/skills/ai-code-tracker/scripts/install.
 - `.git/hooks/` — git hooks（pre-commit、post-commit、pre-push、post-rewrite）
 - `.ai-tracking/config.json` — 本地配置
 
+#### 在 codeagent-cli 中安装
+
+1. 将 `.cac/skills/ai-code-tracker/` 复制到目标项目：
+
+```bash
+cp -r .cac/skills/ai-code-tracker /path/to/your/project/.cac/skills/
+```
+
+2. 在目标项目中运行安装脚本：
+
+```bash
+cd /path/to/your/project
+node --experimental-vm-modules .cac/skills/ai-code-tracker/scripts/install.js
+```
+
+3. 重启 codeagent-cli 会话，使 hooks 生效。
+
+安装后会自动配置：
+- `.cac/settings.json` — PreToolUse / PostToolUse hooks（追踪 Edit/Write/Bash 操作）
+- `.cac/commands/ai-*.md` — slash 命令
+- `.git/hooks/` — git hooks（pre-commit、post-commit、pre-push、post-rewrite）
+- `.ai-tracking/config.json` — 本地配置
+
 ### 验证安装
 
 ```bash
@@ -139,13 +163,16 @@ node .claude/skills/ai-code-tracker/scripts/install.js --check
 
 # opencode 用户
 node .opencode/skills/ai-code-tracker/scripts/install.js --check
+
+# codeagent-cli 用户
+node .cac/skills/ai-code-tracker/scripts/install.js --check
 ```
 
 ### 注意事项
 
 - **Node.js 版本**：需要 Node.js 20.9+（使用 `--experimental-vm-modules` 启动 ES 模块）
 - **commit message 中不要手动加 `[ai-tracking]`**：追踪器会在 post-commit 时自动追加此后缀。手动添加会导致 post-commit hook 跳过该提交，CSV 中不会记录。
-- `.claude/` 和 `.opencode/` 互相独立，可以只安装其中一个，也可以同时安装。
+- `.claude/`、`.cac/` 和 `.opencode/` 互相独立，可以只安装其中一个，也可以同时安装。
 
 ## 配置
 
@@ -374,6 +401,19 @@ grep "post-commit.*complete" .ai-tracking/plugin.log
 
 **修复**：与问题 13 相同，改用 `git branch --all --contains <commit_id>`。源 commit 存在于源分支中（如 `main`），不会被误删。新旧两条记录共存，AI lines 均已正确记录。
 
+### 15. 快速 Bash 命令因 baseline 竞态未被追踪
+
+**现象**：在 opencode 中用快速 Bash 命令（如 `cp` 覆盖已追踪文件）修改文件后，日志显示 `trackedFiles:0`，AI 行数丢失。慢命令（如 `sleep 2 && cp`）则正常追踪。
+
+**原因**：opencode 触发 `tool.execute.before` 钩子后**不会等待其完成**就开始执行 Bash 命令。`handleBashBefore` 中的 `captureGitFileHashes` 需要执行 3 次 git 命令并读取所有变更文件内容，耗时较长。对于快速命令（如 `cp`），Bash 在 baseline 完成前就执行完毕，baseline 读到的是**命令执行后**的文件内容。到 `handleBashAfter` 比较时，`prevHashes[file] === currentHashes[file]`（两者都是命令后的内容），判定为"未变更"而跳过。
+
+慢命令（如 `sleep 2 && cp`）在 sleep 期间 baseline 有足够时间读取命令前的内容，因此能正确检测变更。
+
+**修复**：`recordBashChanges` 改用混合策略，不再仅依赖可能竞态的 `prevHashes` baseline：
+
+- **文件已在 pending-lines 中**（之前被 Write/Edit 追踪过）：直接对比当前文件内容与 pending-lines 中已记录的内容。若不同则记录（`replace: true`），相同则跳过。此路径完全绕开 baseline，不受竞态影响。
+- **文件不在 pending-lines 中**（新文件，未被 AI 工具编辑过）：回退到 `prevHashes` baseline 比较。这类文件竞态概率低（新文件在 baseline 执行时通常还不存在）。
+
 ## 已知限制
 
 ### 并行编辑导致 AI 行数偏低
@@ -390,6 +430,9 @@ node .claude/skills/ai-code-tracker/scripts/install.js --uninstall
 
 # opencode 用户
 node .opencode/skills/ai-code-tracker/scripts/install.js --uninstall
+
+# codeagent-cli 用户
+node .cac/skills/ai-code-tracker/scripts/install.js --uninstall
 ```
 
 移除所有 git hooks、AI 工具钩子、插件和命令文件。统计数据（`.ai-tracking/authors/`）不会被删除。
@@ -400,6 +443,6 @@ node .opencode/skills/ai-code-tracker/scripts/install.js --uninstall
 # 运行测试
 npm test
 
-# 修改 src 后同步到安装目录
-cp -r src/* .opencode/skills/ai-code-tracker/lib/
+# 修改 src 后重新构建 lib（自动同步到 .opencode/、.claude/ 和 .cac/）
+npm run build
 ```
