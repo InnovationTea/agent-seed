@@ -22,7 +22,7 @@ jobs:
           node-version: "22"
 
       - name: Test release script
-        run: node --test tools/release.test.mjs
+        run: node --test tools/release.test.mjs tools/update-agent-seed.test.mjs
 
       - name: Build release
         run: node tools/release.mjs

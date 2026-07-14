@@ -591,6 +591,10 @@ function wrapCurlFallbackError(curlError, nodeError) {
 }
 
 async function fetchWithProxy(url, init = {}, { env = process.env, fetchImpl = fetch, maxRedirects = 5 } = {}) {
+  if (fetchImpl !== fetch) {
+    return fetchImpl(url, init);
+  }
+
   const proxyUrl = resolveProxyForUrl(url, env);
   if (!proxyUrl) {
     return fetchImpl(url, init);
