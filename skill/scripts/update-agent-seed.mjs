@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import http from "node:http";
 import https from "node:https";
 import { tmpdir } from "node:os";
@@ -463,19 +463,25 @@ async function readVersionMetadata(targetDir) {
   }
 }
 
-async function fetchLatestRelease(repository, requestOptions = {}) {
-  const response = await fetchWithProxy(`https://api.github.com/repos/${repository}/releases/latest`, {
-    headers: {
-      Accept: "application/vnd.github+json",
-      "User-Agent": "agent-seed-updater",
-    },
-  }, requestOptions);
+export async function fetchLatestRelease(repository, requestOptions = {}) {
+  const url = `https://api.github.com/repos/${repository}/releases/latest`;
 
-  if (!response.ok) {
-    throw new Error(`GitHub latest release request failed: ${response.status} ${response.statusText}`);
+  try {
+    const response = await fetchWithProxy(url, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "agent-seed-updater",
+      },
+    }, requestOptions);
+
+    if (!response.ok) {
+      throw new Error(`GitHub latest release request failed: ${response.status} ${response.statusText}`);
+    }
+
+    return response.json();
+  } catch (nodeError) {
+    return fetchJsonViaCurlFallback(url, requestOptions, nodeError);
   }
-
-  return response.json();
 }
 
 export async function applyUpdate({ targetDir, asset, requestOptions = {} }) {
@@ -497,23 +503,91 @@ export async function applyUpdate({ targetDir, asset, requestOptions = {} }) {
   }
 }
 
-async function downloadAsset(downloadUrl, zipPath, requestOptions = {}) {
+export async function downloadAsset(downloadUrl, zipPath, requestOptions = {}) {
   if (downloadUrl.startsWith("file:")) {
     await cp(fileURLToPath(downloadUrl), zipPath, { force: true });
     return;
   }
 
-  const response = await fetchWithProxy(downloadUrl, {
-    headers: {
-      "User-Agent": "agent-seed-updater",
-    },
-  }, requestOptions);
+  try {
+    const response = await fetchWithProxy(downloadUrl, {
+      headers: {
+        "User-Agent": "agent-seed-updater",
+      },
+    }, requestOptions);
 
-  if (!response.ok) {
-    throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
+    }
+
+    await writeFile(zipPath, Buffer.from(await response.arrayBuffer()));
+    return;
+  } catch (nodeError) {
+    await downloadViaCurlFallback(downloadUrl, zipPath, requestOptions, nodeError);
+  }
+}
+
+async function downloadViaCurlFallback(downloadUrl, zipPath, requestOptions = {}, nodeError = null) {
+  const env = requestOptions.env || process.env;
+  const commandRunner = requestOptions.commandRunner || runCapture;
+  const proxyUrl = resolveProxyForUrl(downloadUrl, env);
+  const args = ["-sS", "-L", "--max-time", "120", "-A", "agent-seed-updater", "-o", zipPath];
+
+  if (proxyUrl) {
+    args.push("-x", proxyUrl, "-k");
   }
 
-  await writeFile(zipPath, Buffer.from(await response.arrayBuffer()));
+  args.push(downloadUrl);
+
+  try {
+    await commandRunner("curl", args, { env });
+  } catch (curlError) {
+    throw wrapCurlFallbackError(curlError, nodeError);
+  }
+}
+
+async function fetchJsonViaCurlFallback(url, requestOptions = {}, nodeError = null) {
+  const env = requestOptions.env || process.env;
+  const commandRunner = requestOptions.commandRunner || runCapture;
+  const proxyUrl = resolveProxyForUrl(url, env);
+  const args = ["-sS", "-L", "--max-time", "60", "-A", "agent-seed-updater", "-H", "Accept: application/vnd.github+json"];
+
+  if (proxyUrl) {
+    args.push("-x", proxyUrl, "-k");
+  }
+
+  args.push(url);
+
+  let stdout;
+  try {
+    stdout = await commandRunner("curl", args, { env });
+  } catch (curlError) {
+    throw wrapCurlFallbackError(curlError, nodeError);
+  }
+
+  try {
+    return JSON.parse(String(stdout || ""));
+  } catch (parseError) {
+    const wrapped = new Error(`curl fallback returned invalid JSON: ${parseError.message}`, { cause: parseError });
+    wrapped.curlFailed = true;
+    wrapped.nodeError = nodeError;
+    throw wrapped;
+  }
+}
+
+function wrapCurlFallbackError(curlError, nodeError) {
+  const reason = String(curlError?.message || "").trim() || String(curlError?.code || "");
+  const wrapped = new Error(
+    [
+      `curl fallback download also failed: ${reason}`,
+      nodeError ? `prior Node download error: ${nodeError.message}` : "",
+    ].filter(Boolean).join("\n"),
+    { cause: curlError },
+  );
+  wrapped.code = curlError?.code;
+  wrapped.curlFailed = true;
+  wrapped.nodeError = nodeError;
+  return wrapped;
 }
 
 async function fetchWithProxy(url, init = {}, { env = process.env, fetchImpl = fetch, maxRedirects = 5 } = {}) {
@@ -705,13 +779,14 @@ class BufferedResponse {
 
 async function replaceDirectory({ sourceDir, targetDir, backupDir }) {
   await rm(backupDir, { recursive: true, force: true });
-  await rename(targetDir, backupDir);
+  await cp(targetDir, backupDir, { recursive: true, force: true });
+  await rm(targetDir, { recursive: true, force: true });
 
   try {
     await cp(sourceDir, targetDir, { recursive: true, force: true });
   } catch (error) {
     await rm(targetDir, { recursive: true, force: true });
-    await rename(backupDir, targetDir);
+    await cp(backupDir, targetDir, { recursive: true, force: true });
     throw error;
   }
 }

@@ -529,6 +529,139 @@ test("agent-seed updater replaces the target directory without stale files", asy
   }
 });
 
+test("agent-seed updater falls back to curl when Node download fails behind a proxy", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-curl-fallback-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?curl-fallback=${Date.now()}`);
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+    const calls = [];
+
+    await updater.downloadAsset(
+      "https://github.com/InnovationTea/agent-seed/releases/download/v0.2.10/agent-seed.zip",
+      zipPath,
+      {
+        env: { HTTPS_PROXY: "http://127.0.0.1:1" },
+        commandRunner: async (command, args) => {
+          calls.push([command, args]);
+          await writeFile(zipPath, "curl-downloaded\n");
+          return "";
+        },
+      },
+    );
+
+    assert.equal(await readFile(zipPath, "utf8"), "curl-downloaded\n");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][0], "curl");
+    assert.deepEqual(calls[0][1], [
+      "-sS",
+      "-L",
+      "--max-time",
+      "120",
+      "-A",
+      "agent-seed-updater",
+      "-o",
+      zipPath,
+      "-x",
+      "http://127.0.0.1:1",
+      "-k",
+      "https://github.com/InnovationTea/agent-seed/releases/download/v0.2.10/agent-seed.zip",
+    ]);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater curl fallback omits proxy flags without a proxy env", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-curl-no-proxy-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?curl-no-proxy=${Date.now()}`);
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+    const calls = [];
+
+    await updater.downloadAsset(
+      "https://github.com/InnovationTea/agent-seed/releases/download/v0.2.10/agent-seed.zip",
+      zipPath,
+      {
+        env: {},
+        fetchImpl: async () => {
+          throw Object.assign(new Error("fetch failed"), { code: "ECONNRESET" });
+        },
+        commandRunner: async (command, args) => {
+          calls.push([command, args]);
+          await writeFile(zipPath, "direct-curl\n");
+          return "";
+        },
+      },
+    );
+
+    assert.equal(await readFile(zipPath, "utf8"), "direct-curl\n");
+    assert.equal(calls[0][1].includes("-x"), false);
+    assert.equal(calls[0][1].includes("-k"), false);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater raises combined error when curl fallback also fails", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-curl-fail-"));
+
+  try {
+    const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+    const updater = await import(`${pathToFileURL(updaterPath).href}?curl-fail=${Date.now()}`);
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+
+    await assert.rejects(
+      updater.downloadAsset(
+        "https://github.com/InnovationTea/agent-seed/releases/download/v0.2.10/agent-seed.zip",
+        zipPath,
+        {
+          env: {},
+          fetchImpl: async () => {
+            throw Object.assign(new Error("fetch failed"), { code: "ECONNRESET" });
+          },
+          commandRunner: async () => {
+            throw Object.assign(new Error("curl: (7) Failed to connect"), { code: 7 });
+          },
+        },
+      ),
+      (error) => {
+        assert.equal(error.curlFailed, true);
+        assert.match(error.message, /curl fallback download also failed/);
+        assert.match(error.message, /prior Node download error: fetch failed/);
+        assert.equal(error.code, 7);
+        return true;
+      },
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater fetchLatestRelease falls back to curl when Node request fails", async () => {
+  const updaterPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+  const updater = await import(`${pathToFileURL(updaterPath).href}?release-curl=${Date.now()}`);
+  const calls = [];
+
+  const release = await updater.fetchLatestRelease("InnovationTea/agent-seed", {
+    env: { HTTPS_PROXY: "http://127.0.0.1:1" },
+    commandRunner: async (command, args) => {
+      calls.push([command, args]);
+      return JSON.stringify({ tag_name: "v9.9.9", assets: [{ name: "agent-seed.zip", browser_download_url: "https://example/zip" }] });
+    },
+  });
+
+  assert.equal(release.tag_name, "v9.9.9");
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0][0], "curl");
+  assert.equal(calls[0][1].includes("-x"), true);
+  assert.equal(calls[0][1].includes("-k"), true);
+  assert.equal(calls[0][1].includes("Accept: application/vnd.github+json"), true);
+});
+
 test("external plugins config includes install metadata", async () => {
   const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
