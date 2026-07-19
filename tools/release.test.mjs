@@ -532,6 +532,34 @@ test("activation preflight falls back from project evidence to runtime and appro
   assert.match(skill, /ask the owner to choose/i);
 });
 
+test("external plugins include OpenCLI for browser automation", async () => {
+  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+  const config = JSON.parse(await readFile(configPath, "utf8"));
+  const opencli = config.recommended_external_plugins.find((plugin) => plugin.name === "opencli");
+
+  assert.ok(opencli, "expected OpenCLI recommendation");
+  assert.equal(opencli.display_name, "OpenCLI");
+  assert.match(opencli.purpose, /website|browser|web/i);
+  assert.match(opencli.use_when, /default/i);
+  assert.equal(opencli.default_recommendation.requires_network, true);
+  assert.equal(opencli.default_recommendation.requires_user_approval, true);
+  assert.equal(opencli.default_recommendation.safety_level, "ask-first");
+  assert.match(opencli.default_recommendation.recommend_by_default_when, /supported platform/i);
+
+  const supportedPlatforms = ["codex", "claude", "codeagent-cli", "opencode"];
+  assert.deepEqual(opencli.platforms.map((platform) => platform.platform).sort(), supportedPlatforms.sort());
+
+  for (const platform of opencli.platforms) {
+    assert.match(platform.install_action, /npm install -g @jackwener\/opencli/);
+    assert.match(platform.install_action, /npx skills add jackwener\/opencli/);
+    assert.match(platform.install_action, /Browser Bridge/i);
+    assert.match(platform.install_action, /do not install.*automatically/i);
+    assert.ok(platform.detection_evidence.some((entry) => /opencli --version|OpenCLI skills/i.test(entry)));
+    assert.match(platform.verification, /opencli --version/);
+    assert.match(platform.verification, /skills/i);
+  }
+});
+
 test("external plugins include DevEco CLI for HarmonyOS projects", async () => {
   const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));

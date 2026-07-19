@@ -118,6 +118,57 @@
           "verification": "Confirm devecocli --version succeeds, then use devecocli docs search or devecocli --help to verify local command availability without modifying the project."
         }
       ]
+    },
+    {
+      "name": "opencli",
+      "display_name": "OpenCLI",
+      "purpose": "Website and browser automation, structured web extraction, and development or repair of reusable OpenCLI adapters through upstream-managed CLI and agent skills.",
+      "use_when": "Offer by default when a supported agent platform is detected or requested. Use after owner approval for website automation, browser-backed extraction, or OpenCLI adapter workflows.",
+      "do_not_vendor_unless_explicitly_requested": true,
+      "default_recommendation": {
+        "requires_network": true,
+        "requires_user_approval": true,
+        "safety_level": "ask-first",
+        "recommend_by_default_when": "A supported platform is detected or requested during Agent Seed activation."
+      },
+      "platforms": [
+        {
+          "platform": "codex",
+          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "detection_evidence": [
+            "opencli --version succeeds in the current environment.",
+            "OpenCLI skills are already visible to the Codex session or project."
+          ],
+          "verification": "Confirm opencli --version succeeds and Codex recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+        },
+        {
+          "platform": "claude",
+          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "detection_evidence": [
+            "opencli --version succeeds in the current environment.",
+            "OpenCLI skills are already visible to the Claude Code session or project."
+          ],
+          "verification": "Confirm opencli --version succeeds and Claude Code recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+        },
+        {
+          "platform": "codeagent-cli",
+          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "detection_evidence": [
+            "opencli --version succeeds in the current environment.",
+            "OpenCLI skills are already visible to the codeagent-cli session or project."
+          ],
+          "verification": "Confirm opencli --version succeeds and codeagent-cli recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+        },
+        {
+          "platform": "opencode",
+          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "detection_evidence": [
+            "opencli --version succeeds in the current environment.",
+            "OpenCLI skills are already visible to OpenCode through opencode.json, .opencode.yaml, or its loaded skill list."
+          ],
+          "verification": "Confirm opencli --version succeeds and OpenCode recognizes the installed OpenCLI skills from opencode.json, .opencode.yaml, or its loaded skill list. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+        }
+      ]
     }
   ]
 }
