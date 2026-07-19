@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { appendFile, cp, mkdir, mkdtemp, open, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import http from "node:http";
 import https from "node:https";
-import { tmpdir } from "node:os";
 import path from "node:path";
 import { createInterface } from "node:readline/promises";
 import tls from "node:tls";
@@ -12,6 +13,14 @@ const DEFAULT_ASSET_NAME = "agent-seed.zip";
 const DEFAULT_CONFIG_PATH = path.join(".agents", "agent-seed.json");
 const ENV_PROXY_REEXEC_MARKER = "AGENT_SEED_ENV_PROXY_REEXEC";
 const PROXY_ENV_NAMES = ["HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"];
+const DEFERRED_UPDATE_ARG = "--complete-staged-update";
+const DEFERRED_STAGE_RECORD = "update-stage.json";
+const DEFERRED_HELPER_NAME = "update-agent-seed-helper.mjs";
+const DEFERRED_RETRY_DELAYS_MS = [1_000, 2_000, 4_000, 8_000, 16_000, 30_000];
+const DEFERRED_UPDATE_TIMEOUT_MS = 12 * 60 * 60 * 1_000;
+const FAILED_STAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
+const TARGET_LOCK_RETRY_MS = 100;
+const TARGET_LOCK_STALE_MS = 5 * 60 * 1_000;
 
 export function compareVersions(left, right) {
   const leftParts = normalizeVersion(left);
@@ -60,6 +69,16 @@ export function buildUpdatePlan({ currentVersion, latestRelease, assetName = DEF
 }
 
 async function main(argv = process.argv.slice(2)) {
+  if (argv[0] === DEFERRED_UPDATE_ARG) {
+    if (!argv[1] || argv.length !== 2) {
+      throw new Error(`${DEFERRED_UPDATE_ARG} requires exactly one stage-record path`);
+    }
+
+    const result = await runDeferredUpdate({ stagePath: path.resolve(argv[1]) });
+    console.log(`agent-seed deferred update ${result.status}: ${result.version || "unknown"}`);
+    return;
+  }
+
   const options = parseArgs(argv);
   const configPath = path.resolve(options.config || DEFAULT_CONFIG_PATH);
 
@@ -134,7 +153,19 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  await applyUpdate({ targetDir, asset: updatePlan.asset, requestOptions: { env } });
+  const result = await applyUpdate({
+    targetDir,
+    asset: updatePlan.asset,
+    requestOptions: { env },
+    configPath,
+    currentVersion,
+    latestVersion: updatePlan.latestVersion,
+  });
+  if (result.status === "queued") {
+    console.log(`agent-seed update queued until the Windows directory lock is released: ${result.stagePath}`);
+    return;
+  }
+
   console.log(`agent-seed updated in ${targetDir}`);
 }
 
@@ -205,6 +236,22 @@ export async function writeAgentSeedProxyConfig({ configPath = DEFAULT_CONFIG_PA
 }
 
 export async function writeAgentSeedNetworkDeniedState({ configPath = DEFAULT_CONFIG_PATH, now = new Date() } = {}) {
+  await writeAgentSeedUpdateState({
+    configPath,
+    status: "deferred",
+    reason: "network-denied",
+    now,
+  });
+}
+
+export async function writeAgentSeedUpdateState({
+  configPath = DEFAULT_CONFIG_PATH,
+  status,
+  reason,
+  currentVersion,
+  latestVersion,
+  now = new Date(),
+} = {}) {
   const config = await readAgentSeedConfig(configPath);
 
   await writeAgentSeedConfig(configPath, {
@@ -212,8 +259,10 @@ export async function writeAgentSeedNetworkDeniedState({ configPath = DEFAULT_CO
     self_update: {
       ...(config.self_update || {}),
       last_check: {
-        status: "deferred",
-        reason: "network-denied",
+        status,
+        reason,
+        current_version: currentVersion,
+        latest_version: latestVersion,
         checked_at: now.toISOString(),
       },
     },
@@ -484,9 +533,38 @@ export async function fetchLatestRelease(repository, requestOptions = {}) {
   }
 }
 
-export async function applyUpdate({ targetDir, asset, requestOptions = {} }) {
+export async function applyUpdate({
+  targetDir,
+  asset,
+  requestOptions = {},
+  configPath,
+  currentVersion,
+  latestVersion,
+  platform = process.platform,
+  stageRoot = getDeferredStageRoot({ platform }),
+  launcher = launchDeferredUpdate,
+  replace = replaceDirectory,
+  now = () => new Date(),
+  scriptPath = fileURLToPath(import.meta.url),
+} = {}) {
   if (!asset.browser_download_url) {
     throw new Error(`Release asset ${asset.name} is missing browser_download_url`);
+  }
+
+  if (platform === "win32") {
+    return applyWindowsUpdate({
+      targetDir,
+      asset,
+      requestOptions,
+      configPath,
+      currentVersion,
+      latestVersion,
+      stageRoot,
+      launcher,
+      replace,
+      now,
+      scriptPath,
+    });
   }
 
   const tempDir = await mkdtemp(path.join(tmpdir(), "agent-seed-update-"));
@@ -496,10 +574,388 @@ export async function applyUpdate({ targetDir, asset, requestOptions = {} }) {
 
   try {
     await downloadAsset(asset.browser_download_url, zipPath, requestOptions);
+    await verifyAssetDigest(zipPath, asset);
     await extractZip(zipPath, extractDir);
-    await replaceDirectory({ sourceDir: extractDir, targetDir, backupDir });
+    await replaceAndVerify({ sourceDir: extractDir, targetDir, backupDir, latestVersion, replace });
+    await writeUpdateStateIfConfigured({ configPath, status: "updated", reason: "applied", currentVersion, latestVersion, now: now() });
+    return { status: "updated", version: latestVersion };
   } finally {
     await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function applyWindowsUpdate({
+  targetDir,
+  asset,
+  requestOptions,
+  configPath,
+  currentVersion,
+  latestVersion,
+  stageRoot,
+  launcher,
+  replace,
+  now,
+  scriptPath,
+}) {
+  await pruneExpiredFailedStages(stageRoot, now());
+  await mkdir(stageRoot, { recursive: true });
+  const stageDir = await mkdtemp(path.join(stageRoot, "stage-"));
+  const zipPath = path.join(stageDir, asset.name);
+  const sourceDir = path.join(stageDir, "expanded");
+  const backupDir = path.join(stageDir, "backup");
+
+  try {
+    await downloadAsset(asset.browser_download_url, zipPath, requestOptions);
+    await verifyAssetDigest(zipPath, asset);
+    await extractZip(zipPath, sourceDir);
+    await copyDeferredHelper({ stageDir, scriptPath });
+    return withTargetUpdateLock({ stageRoot, targetDir }, async () => {
+      await supersedeQueuedStages(stageRoot, targetDir, now());
+      try {
+        await replaceAndVerify({ sourceDir, targetDir, backupDir, latestVersion, replace });
+        await writeUpdateStateIfConfigured({ configPath, status: "updated", reason: "applied", currentVersion, latestVersion, now: now() });
+        await rm(stageDir, { recursive: true, force: true });
+        return { status: "updated", version: latestVersion };
+      } catch (error) {
+        if (!isRetryableWindowsLock(error)) {
+          throw error;
+        }
+
+        return queueDeferredUpdate({
+          stageDir,
+          targetDir,
+          configPath,
+          currentVersion,
+          latestVersion,
+          launcher,
+          scriptPath,
+          now,
+        });
+      }
+    });
+  } catch (error) {
+    await writeUpdateStateIfConfigured({
+      configPath,
+      status: "failed",
+      reason: getUpdateFailureReason(error),
+      currentVersion,
+      latestVersion,
+      now: now(),
+    });
+    await rm(stageDir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function queueDeferredUpdate({
+  stageDir,
+  targetDir,
+  configPath,
+  currentVersion,
+  latestVersion,
+  launcher = launchDeferredUpdate,
+  scriptPath = fileURLToPath(import.meta.url),
+  now = () => new Date(),
+} = {}) {
+  const timestamp = now();
+  const stagePath = path.join(stageDir, DEFERRED_STAGE_RECORD);
+  const helperPath = await copyDeferredHelper({ stageDir, scriptPath });
+  const stage = {
+    status: "queued",
+    targetDir: path.resolve(targetDir),
+    sourceDir: path.join(stageDir, "expanded"),
+    backupDir: path.join(stageDir, "backup"),
+    configPath: configPath ? path.resolve(configPath) : "",
+    currentVersion: currentVersion || "",
+    latestVersion: latestVersion || "",
+    startedAt: timestamp.toISOString(),
+    deadlineAt: new Date(timestamp.getTime() + DEFERRED_UPDATE_TIMEOUT_MS).toISOString(),
+  };
+
+  await writeFile(stagePath, `${JSON.stringify(stage, null, 2)}\n`);
+  await writeUpdateStateIfConfigured({
+    configPath,
+    status: "queued",
+    reason: "windows-directory-locked",
+    currentVersion,
+    latestVersion,
+    now: timestamp,
+  });
+  await appendDeferredLog(stageDir, `queued replacement for ${stage.targetDir}`);
+  launcher(process.execPath, [helperPath, DEFERRED_UPDATE_ARG, stagePath], {
+    detached: true,
+    stdio: "ignore",
+    windowsHide: true,
+    cwd: stageDir,
+  }).unref();
+
+  return { status: "queued", version: latestVersion, stagePath: stageDir };
+}
+
+export async function runDeferredUpdate({
+  stagePath,
+  sleep = delay,
+  now = () => new Date(),
+  replace = replaceDirectory,
+} = {}) {
+  const suppliedPath = path.resolve(stagePath);
+  const recordPath = path.basename(suppliedPath) === DEFERRED_STAGE_RECORD
+    ? suppliedPath
+    : path.join(suppliedPath, DEFERRED_STAGE_RECORD);
+  const stageDir = path.dirname(recordPath);
+  let stage = JSON.parse(await readFile(recordPath, "utf8"));
+  let attempt = 0;
+
+  while (true) {
+    let outcome;
+    try {
+      outcome = await withTargetUpdateLock({
+        stageRoot: path.dirname(stageDir),
+        targetDir: stage.targetDir,
+        deadlineAt: stage.deadlineAt,
+      }, async () => {
+      stage = JSON.parse(await readFile(recordPath, "utf8"));
+      if (stage.status === "superseded" || await isInstalledVersionNewer(stage.targetDir, stage.latestVersion)) {
+        return { status: "superseded" };
+      }
+
+      try {
+        await replaceAndVerify({
+          sourceDir: stage.sourceDir,
+          targetDir: stage.targetDir,
+          backupDir: stage.backupDir,
+          latestVersion: stage.latestVersion,
+          replace,
+        });
+        return { status: "updated" };
+      } catch (error) {
+        return { status: "error", error };
+      }
+      });
+    } catch (error) {
+      outcome = { status: "error", error };
+    }
+
+    if (outcome.status === "superseded") {
+      await appendDeferredLog(stageDir, "stage superseded by a newer update");
+      await rm(stageDir, { recursive: true, force: true });
+      return { status: "superseded", version: stage.latestVersion };
+    }
+    if (outcome.status === "updated") {
+      await writeUpdateStateIfConfigured({
+        configPath: stage.configPath,
+        status: "updated",
+        reason: "applied",
+        currentVersion: stage.currentVersion,
+        latestVersion: stage.latestVersion,
+        now: now(),
+      });
+      await appendDeferredLog(stageDir, "replacement completed");
+      await rm(stageDir, { recursive: true, force: true });
+      return { status: "updated", version: stage.latestVersion };
+    }
+
+    const error = outcome.error;
+    {
+      if (!isRetryableWindowsLock(error) || error.code === "ETIMEDOUT" || now().getTime() >= new Date(stage.deadlineAt).getTime()) {
+        await writeUpdateStateIfConfigured({
+          configPath: stage.configPath,
+          status: "failed",
+          reason: isRetryableWindowsLock(error) || error.code === "ETIMEDOUT" ? "lock-timeout" : getUpdateFailureReason(error),
+          currentVersion: stage.currentVersion,
+          latestVersion: stage.latestVersion,
+          now: now(),
+        });
+        await markStageFailed(recordPath, stage, now());
+        await appendDeferredLog(stageDir, `replacement failed: ${error.message}`);
+        throw error;
+      }
+
+      await appendDeferredLog(stageDir, `directory still locked; retry ${attempt + 1}`);
+      await sleep(DEFERRED_RETRY_DELAYS_MS[Math.min(attempt, DEFERRED_RETRY_DELAYS_MS.length - 1)]);
+      attempt += 1;
+    }
+  }
+}
+
+function getDeferredStageRoot({ platform = process.platform, env = process.env } = {}) {
+  const localData = env.LOCALAPPDATA || path.join(homedir(), "AppData", "Local");
+  return platform === "win32" ? path.join(localData, "agent-seed", "updates") : path.join(tmpdir(), "agent-seed", "updates");
+}
+
+async function copyDeferredHelper({ stageDir, scriptPath }) {
+  const helperPath = path.join(stageDir, DEFERRED_HELPER_NAME);
+  await cp(scriptPath, helperPath, { force: true });
+  return helperPath;
+}
+
+function launchDeferredUpdate(command, args, options) {
+  return spawn(command, args, options);
+}
+
+function isRetryableWindowsLock(error) {
+  if (["EBUSY", "ENOTEMPTY"].includes(error?.code)) {
+    return true;
+  }
+
+  return error?.code === "EPERM" && /resource busy|sharing violation|used by another process/i.test(String(error?.message || ""));
+}
+
+async function replaceAndVerify({ sourceDir, targetDir, backupDir, latestVersion, replace }) {
+  try {
+    await replace({ sourceDir, targetDir, backupDir });
+    await verifyInstalledVersion(targetDir, latestVersion);
+  } catch (error) {
+    const backupExists = await stat(backupDir).then(() => true, (statError) => {
+      if (statError.code === "ENOENT") {
+        return false;
+      }
+      throw statError;
+    });
+    if (backupExists) {
+      await restoreDirectory({ sourceDir: backupDir, targetDir });
+    }
+    throw error;
+  }
+}
+
+async function restoreDirectory({ sourceDir, targetDir }) {
+  await rm(targetDir, { recursive: true, force: true });
+  await cp(sourceDir, targetDir, { recursive: true, force: true });
+}
+
+function getUpdateFailureReason(error) {
+  return /Installed update version mismatch/.test(String(error?.message || ""))
+    ? "version-verification-failed"
+    : "replacement-failed";
+}
+
+async function verifyInstalledVersion(targetDir, latestVersion) {
+  if (!latestVersion) {
+    return;
+  }
+
+  const metadata = await readVersionMetadata(targetDir);
+  if (metadata.version !== latestVersion) {
+    throw new Error(`Installed update version mismatch: expected ${latestVersion}, got ${metadata.version || "missing"}`);
+  }
+}
+
+async function writeUpdateStateIfConfigured({ configPath, status, reason, currentVersion, latestVersion, now }) {
+  if (!configPath) {
+    return;
+  }
+
+  await writeAgentSeedUpdateState({ configPath, status, reason, currentVersion, latestVersion, now });
+}
+
+async function appendDeferredLog(stageDir, message) {
+  await appendFile(path.join(stageDir, "update.log"), `${new Date().toISOString()} ${message}\n`);
+}
+
+async function markStageFailed(recordPath, stage, now) {
+  await writeFile(recordPath, `${JSON.stringify({ ...stage, status: "failed", failedAt: now.toISOString() }, null, 2)}\n`);
+}
+
+async function pruneExpiredFailedStages(stageRoot, now) {
+  const entries = await readdir(stageRoot, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  });
+
+  await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
+    const candidate = path.join(stageRoot, entry.name);
+    try {
+      const record = JSON.parse(await readFile(path.join(candidate, DEFERRED_STAGE_RECORD), "utf8"));
+      if (record.status === "failed" && Date.parse(record.failedAt) + FAILED_STAGE_RETENTION_MS <= now.getTime()) {
+        await rm(candidate, { recursive: true, force: true });
+      }
+    } catch {
+      // An incomplete or active stage is retained for its helper or later diagnosis.
+    }
+  }));
+}
+
+async function supersedeQueuedStages(stageRoot, targetDir, now) {
+  const entries = await readdir(stageRoot, { withFileTypes: true }).catch((error) => {
+    if (error.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  });
+
+  await Promise.all(entries.filter((entry) => entry.isDirectory()).map(async (entry) => {
+    const recordPath = path.join(stageRoot, entry.name, DEFERRED_STAGE_RECORD);
+    try {
+      const record = JSON.parse(await readFile(recordPath, "utf8"));
+      if (record.status === "queued" && path.resolve(record.targetDir) === path.resolve(targetDir)) {
+        await writeFile(recordPath, `${JSON.stringify({ ...record, status: "superseded", supersededAt: now.toISOString() }, null, 2)}\n`);
+      }
+    } catch {
+      // A stage without a complete record cannot safely be superseded.
+    }
+  }));
+}
+
+async function withTargetUpdateLock({ stageRoot, targetDir, deadlineAt }, action) {
+  const lockDir = path.join(stageRoot, "locks");
+  const lockName = createHash("sha256").update(path.resolve(targetDir).toLowerCase()).digest("hex");
+  const lockPath = path.join(lockDir, `${lockName}.lock`);
+  await mkdir(lockDir, { recursive: true });
+
+  while (true) {
+    if (deadlineAt && Date.now() >= new Date(deadlineAt).getTime()) {
+      const error = new Error(`Timed out waiting for update lock: ${targetDir}`);
+      error.code = "ETIMEDOUT";
+      throw error;
+    }
+    try {
+      const handle = await open(lockPath, "wx");
+      try {
+        await handle.writeFile(`${Date.now()}\n`);
+        return await action();
+      } finally {
+        await handle.close();
+        await rm(lockPath, { force: true });
+      }
+    } catch (error) {
+      if (error.code !== "EEXIST") {
+        throw error;
+      }
+      const lockInfo = await stat(lockPath).catch(() => null);
+      if (lockInfo && Date.now() - lockInfo.mtimeMs >= TARGET_LOCK_STALE_MS) {
+        await rm(lockPath, { force: true });
+        continue;
+      }
+      await delay(TARGET_LOCK_RETRY_MS);
+    }
+  }
+}
+
+async function isInstalledVersionNewer(targetDir, latestVersion) {
+  if (!latestVersion) {
+    return false;
+  }
+
+  const metadata = await readVersionMetadata(targetDir);
+  return metadata.version && compareVersions(metadata.version, latestVersion) > 0;
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function verifyAssetDigest(filePath, asset = {}) {
+  const match = typeof asset.digest === "string" ? asset.digest.trim().match(/^sha256:([a-f0-9]{64})$/i) : null;
+  if (!match) {
+    return;
+  }
+
+  const actualDigest = createHash("sha256").update(await readFile(filePath)).digest("hex");
+  if (actualDigest.toLowerCase() !== match[1].toLowerCase()) {
+    throw new Error(`Release asset digest mismatch: expected ${match[1]}, got ${actualDigest}`);
   }
 }
 
@@ -782,15 +1238,21 @@ class BufferedResponse {
 }
 
 async function replaceDirectory({ sourceDir, targetDir, backupDir }) {
-  await rm(backupDir, { recursive: true, force: true });
-  await cp(targetDir, backupDir, { recursive: true, force: true });
-  await rm(targetDir, { recursive: true, force: true });
+  const backupExists = await stat(backupDir).then(() => true, (error) => {
+    if (error.code === "ENOENT") {
+      return false;
+    }
+    throw error;
+  });
+  if (!backupExists) {
+    await cp(targetDir, backupDir, { recursive: true, force: true });
+  }
 
   try {
+    await rm(targetDir, { recursive: true, force: true });
     await cp(sourceDir, targetDir, { recursive: true, force: true });
   } catch (error) {
-    await rm(targetDir, { recursive: true, force: true });
-    await cp(backupDir, targetDir, { recursive: true, force: true });
+    await restoreDirectory({ sourceDir: backupDir, targetDir });
     throw error;
   }
 }

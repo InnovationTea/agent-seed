@@ -33,6 +33,8 @@ Never run `--apply` without owner approval. If `VERSION.json` is missing because
 
 When `--apply` is approved, the updater downloads `agent-seed.zip`, expands it, moves the current skill root to a temporary backup, and copies the expanded package into the original target path. This is a replacement update, not a merge: files that existed only in the old skill directory are removed. If copying the new package fails, the updater restores the backup before reporting the error.
 
+On Windows, the current agent host may lock the installed skill directory. If an approved replacement hits that lock, the updater stages the verified package in the current user's local application-data directory, records `status: "queued"` with `reason: "windows-directory-locked"`, and starts an external helper. The update automatically completes after the agent host exits and releases the directory lock. Do not run another update command while it is queued. The helper records `updated` after it verifies the installed version; only a terminal `failed` state requires another `--apply` command.
+
 Use `.agents/agent-seed.json` as the unified local Agent Seed config and state file. Proxy settings for the updater live under `self_update.proxy`; for example:
 
 ```json

@@ -686,6 +686,21 @@ test("core skill instructions document version metadata and self update flow", a
   assert.match(skill, /\.agents\/agent-seed\.json/);
 });
 
+test("core skill instructions document deferred Windows self updates", async () => {
+  const rootDir = process.cwd();
+  const documents = await Promise.all([
+    readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8"),
+    readFile(path.join(rootDir, "README.md"), "utf8"),
+  ]);
+
+  for (const document of documents) {
+    assert.match(document, /queued/i);
+    assert.match(document, /windows-directory-locked/i);
+    assert.match(document, /(?:automatically completes|completes automatically) after the agent host exits and releases the (?:directory )?lock/i);
+    assert.match(document, /terminal `failed` state (?:requires another `--apply` command|needs a new `--apply` command)/i);
+  }
+});
+
 test("framework knowledge config registers valid built-in knowledge packs", async () => {
   const rootDir = process.cwd();
   const configPath = path.join(rootDir, "skill", "framework-knowledge.json");

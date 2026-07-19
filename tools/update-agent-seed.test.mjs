@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -322,6 +323,287 @@ test("agent-seed updater records denied network checks as deferred local state",
   }
 });
 
+test("agent-seed updater verifies advertised asset digests before extraction", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-digest-"));
+
+  try {
+    const updater = await importUpdater("asset-digest");
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+    await writeFile(zipPath, "release bytes\n");
+    const digest = createHash("sha256").update("release bytes\n").digest("hex");
+
+    await updater.verifyAssetDigest(zipPath, { digest: `sha256:${digest}` });
+    await assert.rejects(
+      updater.verifyAssetDigest(zipPath, { digest: `sha256:${"0".repeat(64)}` }),
+      /digest mismatch/,
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater records queued updates in unified local state", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-queued-state-"));
+
+  try {
+    const updater = await importUpdater("queued-state");
+    const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+
+    await updater.writeAgentSeedUpdateState({
+      configPath,
+      status: "queued",
+      reason: "windows-directory-locked",
+      currentVersion: "v0.2.11",
+      latestVersion: "v0.2.12",
+      now: new Date("2026-07-19T00:00:00.000Z"),
+    });
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.deepEqual(config.self_update.last_check, {
+      status: "queued",
+      reason: "windows-directory-locked",
+      current_version: "v0.2.11",
+      latest_version: "v0.2.12",
+      checked_at: "2026-07-19T00:00:00.000Z",
+    });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater queues a locked Windows replacement and helper completes it", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-deferred-update-"));
+
+  try {
+    const updater = await importUpdater("deferred-update");
+    const sourceDir = path.join(rootDir, "new-skill");
+    const targetDir = path.join(rootDir, "target-skill");
+    const stageRoot = path.join(rootDir, "stages");
+    const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+    const launches = [];
+
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
+    await writeFile(path.join(sourceDir, "VERSION.json"), '{"version":"v0.2.12"}\n');
+    await writeFile(path.join(targetDir, "SKILL.md"), "old skill\n");
+    await writeFile(path.join(targetDir, "stale.txt"), "old file\n");
+    await createTestZip(sourceDir, zipPath);
+
+    const queued = await updater.applyUpdate({
+      targetDir,
+      asset: { name: "agent-seed.zip", browser_download_url: pathToFileURL(zipPath).href },
+      configPath,
+      currentVersion: "v0.2.11",
+      latestVersion: "v0.2.12",
+      platform: "win32",
+      stageRoot,
+      replace: async () => {
+        throw Object.assign(new Error("directory is busy"), { code: "EBUSY" });
+      },
+      launcher: (command, args, options) => {
+        launches.push({ command, args, options });
+        return { unref() {} };
+      },
+    });
+
+    assert.equal(queued.status, "queued");
+    assert.equal(launches.length, 1);
+    assert.equal(await readFile(path.join(queued.stagePath, "expanded", "VERSION.json"), "utf8"), '{"version":"v0.2.12"}\n');
+
+    await updater.runDeferredUpdate({
+      stagePath: queued.stagePath,
+      sleep: async () => {},
+    });
+
+    assert.equal(await readFile(path.join(targetDir, "VERSION.json"), "utf8"), '{"version":"v0.2.12"}\n');
+    await assert.rejects(readFile(path.join(targetDir, "stale.txt"), "utf8"), /ENOENT/);
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(config.self_update.last_check.status, "updated");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater restores the prior skill when installed version verification fails", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-version-rollback-"));
+
+  try {
+    const updater = await importUpdater("version-rollback");
+    const sourceDir = path.join(rootDir, "new-skill");
+    const targetDir = path.join(rootDir, "target-skill");
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "SKILL.md"), "new skill\n");
+    await writeFile(path.join(sourceDir, "VERSION.json"), '{"version":"v0.2.13"}\n');
+    await writeFile(path.join(targetDir, "SKILL.md"), "old skill\n");
+    await writeFile(path.join(targetDir, "VERSION.json"), '{"version":"v0.2.11"}\n');
+    await createTestZip(sourceDir, zipPath);
+
+    await assert.rejects(
+      updater.applyUpdate({
+        targetDir,
+        asset: { name: "agent-seed.zip", browser_download_url: pathToFileURL(zipPath).href },
+        latestVersion: "v0.2.12",
+        platform: "win32",
+        stageRoot: path.join(rootDir, "stages"),
+      }),
+      /Installed update version mismatch/,
+    );
+
+    assert.equal(await readFile(path.join(targetDir, "SKILL.md"), "utf8"), "old skill\n");
+    assert.equal(await readFile(path.join(targetDir, "VERSION.json"), "utf8"), '{"version":"v0.2.11"}\n');
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed updater does not queue ordinary Windows permission errors", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-permission-error-"));
+
+  try {
+    const updater = await importUpdater("permission-error");
+    const sourceDir = path.join(rootDir, "new-skill");
+    const targetDir = path.join(rootDir, "target-skill");
+    const zipPath = path.join(rootDir, "agent-seed.zip");
+
+    await mkdir(sourceDir, { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(sourceDir, "SKILL.md"), "new skill\n");
+    await createTestZip(sourceDir, zipPath);
+
+    await assert.rejects(
+      updater.applyUpdate({
+        targetDir,
+        asset: { name: "agent-seed.zip", browser_download_url: pathToFileURL(zipPath).href },
+        platform: "win32",
+        stageRoot: path.join(rootDir, "stages"),
+        replace: async () => {
+          throw Object.assign(new Error("access denied"), { code: "EPERM" });
+        },
+        launcher: () => {
+          throw new Error("ordinary permission failures must not launch a helper");
+        },
+      }),
+      /access denied/,
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed deferred helper does not replace a newer installed version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-no-downgrade-"));
+
+  try {
+    const updater = await importUpdater("no-downgrade");
+    const stageDir = path.join(rootDir, "stage");
+    const targetDir = path.join(rootDir, "target-skill");
+    await mkdir(path.join(stageDir, "expanded"), { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(path.join(stageDir, "expanded", "VERSION.json"), '{"version":"v0.2.12"}\n');
+    await writeFile(path.join(targetDir, "VERSION.json"), '{"version":"v0.2.13"}\n');
+    await writeFile(path.join(targetDir, "SKILL.md"), "newer skill\n");
+    await writeFile(path.join(stageDir, "update-stage.json"), `${JSON.stringify({
+      status: "queued",
+      targetDir,
+      sourceDir: path.join(stageDir, "expanded"),
+      backupDir: path.join(stageDir, "backup"),
+      latestVersion: "v0.2.12",
+      deadlineAt: "2026-07-20T00:00:00.000Z",
+    })}\n`);
+
+    const result = await updater.runDeferredUpdate({ stagePath: stageDir });
+
+    assert.equal(result.status, "superseded");
+    assert.equal(await readFile(path.join(targetDir, "SKILL.md"), "utf8"), "newer skill\n");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed deferred helper records timeout failures and retains diagnostics", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-timeout-"));
+
+  try {
+    const updater = await importUpdater("timeout");
+    const stageDir = path.join(rootDir, "stage");
+    const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+    await mkdir(stageDir, { recursive: true });
+    await writeFile(path.join(stageDir, "update-stage.json"), `${JSON.stringify({
+      status: "queued",
+      targetDir: path.join(rootDir, "target-skill"),
+      sourceDir: path.join(stageDir, "expanded"),
+      backupDir: path.join(stageDir, "backup"),
+      configPath,
+      currentVersion: "v0.2.11",
+      latestVersion: "v0.2.12",
+      deadlineAt: "2026-07-18T00:00:00.000Z",
+    })}\n`);
+
+    await assert.rejects(
+      updater.runDeferredUpdate({
+        stagePath: stageDir,
+        now: () => new Date("2026-07-19T00:00:00.000Z"),
+        replace: async () => {
+          throw Object.assign(new Error("directory is busy"), { code: "EBUSY" });
+        },
+      }),
+      /Timed out waiting for update lock/,
+    );
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(config.self_update.last_check.reason, "lock-timeout");
+    assert.match(await readFile(path.join(stageDir, "update.log"), "utf8"), /replacement failed/);
+    const stage = JSON.parse(await readFile(path.join(stageDir, "update-stage.json"), "utf8"));
+    assert.equal(stage.status, "failed");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("agent-seed deferred helper rechecks superseded state before retrying", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-superseded-retry-"));
+
+  try {
+    const updater = await importUpdater("superseded-retry");
+    const stageDir = path.join(rootDir, "stage");
+    const recordPath = path.join(stageDir, "update-stage.json");
+    const stage = {
+      status: "queued",
+      targetDir: path.join(rootDir, "target-skill"),
+      sourceDir: path.join(stageDir, "expanded"),
+      backupDir: path.join(stageDir, "backup"),
+      latestVersion: "v0.2.12",
+      deadlineAt: "2026-07-20T00:00:00.000Z",
+    };
+    let replaceCalls = 0;
+
+    await mkdir(stageDir, { recursive: true });
+    await writeFile(recordPath, `${JSON.stringify(stage)}\n`);
+
+    const result = await updater.runDeferredUpdate({
+      stagePath: stageDir,
+      now: () => new Date("2026-07-19T00:00:00.000Z"),
+      replace: async () => {
+        replaceCalls += 1;
+        throw Object.assign(new Error("directory is busy"), { code: "EBUSY" });
+      },
+      sleep: async () => {
+        await writeFile(recordPath, `${JSON.stringify({ ...stage, status: "superseded" })}\n`);
+      },
+    });
+
+    assert.equal(result.status, "superseded");
+    assert.equal(replaceCalls, 1);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("agent-seed updater replaces the target directory without stale files", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-update-replace-"));
 
@@ -344,6 +626,7 @@ test("agent-seed updater replaces the target directory without stale files", asy
         name: "agent-seed.zip",
         browser_download_url: pathToFileURL(zipPath).href,
       },
+      platform: "linux",
     });
 
     assert.equal(await readFile(path.join(targetDir, "SKILL.md"), "utf8"), "---\nname: agent-seed\n---\n");
