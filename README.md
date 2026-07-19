@@ -133,9 +133,9 @@ During Agent Seed activation, the skill treats update checks as an ask-first sel
 ### `git-code-tracker`
 
 - Version: `v1.0.3`
-- Source: `https://github.com/yooocen/git-code-tracker.git`
+- Source: `git@github.com:yooocen/git-code-tracker.git`
 - Ref: `refs/tags/v1.0.3`
-- Commit: `5ce98664b88ff10d8e8d45fc328dae9493df6ffd`
+- Commit: `66c048422dee2e433583cb97bb3a71efd0fcfbef`
 - Package path: `skill/packages/git-code-tracker`
 - Project-local installer: `node skill/packages/git-code-tracker/install-to-project.js <target-project>`
 

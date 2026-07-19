@@ -306,7 +306,7 @@ test("git-code-tracker package supports codeagent-cli .cac installation", async 
   assert.ok(tracker, "expected git-code-tracker package entry");
   assert.equal(tracker.version, "v1.0.3");
   assert.equal(tracker.source.ref, "refs/tags/v1.0.3");
-  assert.equal(tracker.source.commit, "5ce98664b88ff10d8e8d45fc328dae9493df6ffd");
+  assert.equal(tracker.source.commit, "66c048422dee2e433583cb97bb3a71efd0fcfbef");
   assert.ok(tracker.default_install.writes.includes(".cac/skills/ai-code-tracker"));
   assert.ok(tracker.default_install.writes.includes(".cac/commands"));
   assert.ok(tracker.default_install.writes.includes(".cac/settings.json"));

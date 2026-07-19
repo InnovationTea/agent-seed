@@ -12,9 +12,9 @@
       "kind": "multi-platform-skill-package",
       "source": {
         "type": "git",
-        "repo": "https://github.com/yooocen/git-code-tracker.git",
+        "repo": "git@github.com:yooocen/git-code-tracker.git",
         "ref": "refs/tags/v1.0.3",
-        "commit": "5ce98664b88ff10d8e8d45fc328dae9493df6ffd"
+        "commit": "66c048422dee2e433583cb97bb3a71efd0fcfbef"
       },
       "path": "packages/git-code-tracker",
       "readme": "packages/git-code-tracker/README.md",
