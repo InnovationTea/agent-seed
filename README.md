@@ -128,7 +128,7 @@ node scripts/update-agent-seed.mjs --set-https-proxy http://proxy.example:8080
 node scripts/update-agent-seed.mjs --set-no-proxy localhost,127.0.0.1
 ```
 
-During Agent Seed activation, the skill treats update checks as an ask-first self-update preflight. If network access is declined, agents should record the check as deferred in `.agents/agent-seed.json` instead of silently treating the skill as current.
+During Agent Seed activation, `/agent-seed` authorizes a read-only update preflight by default: read the installed `VERSION.json`, read the target project's `.agents/agent-seed.json`, then run `node scripts/update-agent-seed.mjs --json`. Only an explicit per-turn request to skip the check or `self_update.check_on_start: false` may suppress it. `self_update.last_check` is historical state and cannot prove the remote release is still current. Applying an update with `--apply` remains a separate approval. If the read-only check cannot run, agents must report the update status as unknown rather than treating the skill as current.
 
 ## Bundled Packages
 
