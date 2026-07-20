@@ -107,7 +107,7 @@ For each source, distinguish preset scan guidance from confirmed facts. A built-
 
 ## Recommended External Plugins
 
-Capture mature cross-project agent workflow suites as recommended external plugins when they should stay installed through the platform's own network-backed plugin flow instead of being vendored into the generated assets. Use `external-plugins.json` as the source of truth for known external plugin recommendations. Its `activation_policy` defines the required start-of-skill check and skip-reason behavior.
+Capture mature cross-project agent workflow suites as recommended external plugins when they should stay installed through the platform's own network-backed plugin flow instead of being vendored into the generated assets. Use `external-packages.json` as the source of truth for known external plugin recommendations. Its `activation_policy` defines the required start-of-skill check and skip-reason behavior.
 
 Use this structure:
 
@@ -126,7 +126,7 @@ Use this structure:
 - Safety level:
 ```
 
-For each matching configured plugin, copy the relevant purpose, supported platform, install action, detection evidence, verification, network requirement, approval requirement, and safety level from `external-plugins.json`. Do not add a configured external plugin to `bundled-skills.json`, `bundled-packages.json`, or project-local skill folders unless the user explicitly asks to vendor it.
+For each matching configured plugin, copy the relevant purpose, supported platform, install action, detection evidence, verification, network requirement, approval requirement, and safety level from `external-packages.json`. Do not add a configured external plugin to `bundled-skills.json`, `bundled-packages.json`, or project-local skill folders unless the user explicitly asks to vendor it.
 
 Treat external plugin installation as ask-first when the config marks it as requiring network access or user approval. Record verification as the configured platform-specific smoke check.
 

@@ -241,7 +241,7 @@ description: Use when working in <project>, especially for setup, running, build
 
 External plugin recommendations are guidance, not bundled assets. Do not add them to `bundled-skills.json` or `bundled-packages.json` unless the owner explicitly changes the requirement to vendoring.
 
-Use `external-plugins.json` as the source of truth for known external plugin recommendations. Its `activation_policy` requires checking applicable external plugins before onboarding work continues and recording a reason when an applicable install is skipped. For each configured plugin that matches the owner's platform and is not already available, copy the relevant configured fields into the generated guidance instead of writing plugin-specific prose by hand.
+Use `external-packages.json` as the source of truth for known external plugin recommendations. Its `activation_policy` requires checking applicable external plugins before onboarding work continues and recording a reason when an applicable install is skipped. For each configured plugin that matches the owner's platform and is not already available, copy the relevant configured fields into the generated guidance instead of writing plugin-specific prose by hand.
 
 When recommending external plugins in `AGENTS.md`, `agents.d/tooling.md`, or a generated project skill, include:
 

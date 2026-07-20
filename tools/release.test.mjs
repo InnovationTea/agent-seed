@@ -176,8 +176,16 @@ test("release CLI accepts a local version override", async () => {
   }
 });
 
-test("external plugins config includes install metadata", async () => {
-  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+test("external packages config uses the generalized file name", async () => {
+  const packagesPath = path.join(process.cwd(), "skill", "external-packages.json");
+  const pluginsPath = path.join(process.cwd(), "skill", "external-plugins.json");
+
+  assert.equal(await exists(packagesPath), true);
+  assert.equal(await exists(pluginsPath), false);
+});
+
+test("external packages config includes install metadata", async () => {
+  const configPath = path.join(process.cwd(), "skill", "external-packages.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
 
   assert.equal(config.activation_policy.on_agent_seed_start, "must_check");
@@ -268,7 +276,7 @@ test("Codex bundled direct skill detection does not treat AGENTS.md as a standal
 
 test("external plugin config recognizes both OpenCode config file names", async () => {
   const rootDir = process.cwd();
-  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "external-plugins.json"), "utf8"));
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "external-packages.json"), "utf8"));
   const opencodePlatforms = config.recommended_external_plugins
     .flatMap((plugin) => plugin.platforms)
     .filter((platform) => platform.platform === "opencode");
@@ -503,7 +511,7 @@ test("core skill instructions define activation preflight as a hard gate", async
 
   assert.match(skill, /## Activation Preflight/);
   assert.match(skill, /Before scanning, interviewing, generating files, or answering onboarding conclusions/i);
-  assert.match(skill, /must inspect `external-plugins\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
+  assert.match(skill, /must inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
   assert.match(skill, /Do not continue with onboarding work until each applicable default or recommended item/i);
   assert.match(skill, /accepted, declined, already available, platform-inapplicable, or explicitly deferred/i);
   assert.match(skill, /Record the reason when an applicable install is skipped/i);
@@ -513,7 +521,7 @@ test("activation preflight separates manifest inspection from repository evidenc
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
 
-  assert.match(skill, /First, inspect `external-plugins\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
+  assert.match(skill, /First, inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
   assert.match(skill, /After the target root is known, perform a minimal platform-evidence scan/i);
   assert.match(skill, /Do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed/i);
 });
@@ -533,7 +541,7 @@ test("activation preflight falls back from project evidence to runtime and appro
 });
 
 test("external plugins include OpenCLI for browser automation", async () => {
-  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+  const configPath = path.join(process.cwd(), "skill", "external-packages.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const opencli = config.recommended_external_plugins.find((plugin) => plugin.name === "opencli");
 
@@ -561,7 +569,7 @@ test("external plugins include OpenCLI for browser automation", async () => {
 });
 
 test("external plugins include DevEco CLI for HarmonyOS projects", async () => {
-  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+  const configPath = path.join(process.cwd(), "skill", "external-packages.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const deveco = config.recommended_external_plugins.find((plugin) => plugin.name === "deveco-cli");
 
@@ -584,7 +592,7 @@ test("external plugins include DevEco CLI for HarmonyOS projects", async () => {
 });
 
 test("external plugins do not default to archived DevEco Toolbox", async () => {
-  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+  const configPath = path.join(process.cwd(), "skill", "external-packages.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
 
   assert.equal(
@@ -655,7 +663,7 @@ test("local Agent Seed config is ignored by Git", async () => {
 
 test("external plugin prose stays configuration driven", async () => {
   const rootDir = process.cwd();
-  const configPath = path.join(rootDir, "skill", "external-plugins.json");
+  const configPath = path.join(rootDir, "skill", "external-packages.json");
   const skillPath = path.join(rootDir, "skill", "SKILL.md");
   const frameworkPackPaths = new Set([
     path.normalize(path.join(rootDir, "skill", "references", "frameworks", "nuwa.md")),
@@ -686,7 +694,7 @@ test("core skill instructions define Superpowers SDD as an ask-first external wo
   const skill = await readFile(skillPath, "utf8");
 
   assert.match(skill, /Superpowers/i);
-  assert.match(skill, /external-plugins\.json/);
+  assert.match(skill, /external-packages\.json/);
   assert.match(skill, /not visible/i);
   assert.match(skill, /recommend installing/i);
   assert.match(skill, /approval/i);

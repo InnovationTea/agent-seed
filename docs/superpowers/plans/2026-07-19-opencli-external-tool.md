@@ -4,7 +4,7 @@
 
 **Goal:** Make OpenCLI an approval-gated external tool that Agent Seed offers by default for Codex, Claude Code, codeagent-cli, and OpenCode.
 
-**Architecture:** Register upstream installation and verification metadata in `skill/external-plugins.json`; do not vendor OpenCLI code or skills. Extend the release tests with an OpenCLI-specific contract test, while the generic manifest test continues validating the shared schema.
+**Architecture:** Register upstream installation and verification metadata in `skill/external-packages.json`; do not vendor OpenCLI code or skills. Extend the release tests with an OpenCLI-specific contract test, while the generic manifest test continues validating the shared schema.
 
 **Tech Stack:** JSON configuration, Node.js built-in `node:test`, GNU Make release targets.
 
@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Modify: `skill/external-plugins.json` - declare OpenCLI's default, approval-gated external-tool recommendation for the four supported platforms.
+- Modify: `skill/external-packages.json` - declare OpenCLI's default, approval-gated external-tool recommendation for the four supported platforms.
 - Modify: `tools/release.test.mjs` - assert the OpenCLI registration and its safety/install contract.
 - Create: `docs/superpowers/plans/2026-07-19-opencli-external-tool.md` - this implementation plan.
 
@@ -21,7 +21,7 @@
 **Files:**
 
 - Modify: `tools/release.test.mjs:535` - add a focused OpenCLI manifest-contract test before the DevEco CLI test.
-- Modify: `skill/external-plugins.json:8` - append the `opencli` entry to `recommended_external_plugins`.
+- Modify: `skill/external-packages.json:8` - append the `opencli` entry to `recommended_external_plugins`.
 
 - [ ] **Step 1: Write the failing OpenCLI manifest-contract test**
 
@@ -29,7 +29,7 @@ Add this test before `test("external plugins include DevEco CLI for HarmonyOS pr
 
 ```js
 test("external plugins include OpenCLI for browser automation", async () => {
-  const configPath = path.join(process.cwd(), "skill", "external-plugins.json");
+  const configPath = path.join(process.cwd(), "skill", "external-packages.json");
   const config = JSON.parse(await readFile(configPath, "utf8"));
   const opencli = config.recommended_external_plugins.find((plugin) => plugin.name === "opencli");
 
@@ -144,7 +144,7 @@ make check
 make release VERSION=v0.0.0-opencli-test
 ```
 
-Expected: both Node test files pass; the release command recreates ignored `outputs/agent-seed/`, `outputs/agent-seed.zip`, and `outputs/agent-seed-release.json` with the OpenCLI entry included in the packaged `external-plugins.json`.
+Expected: both Node test files pass; the release command recreates ignored `outputs/agent-seed/`, `outputs/agent-seed.zip`, and `outputs/agent-seed-release.json` with the OpenCLI entry included in the packaged `external-packages.json`.
 
 - [ ] **Step 6: Review the final diff and commit**
 
@@ -152,8 +152,8 @@ Run:
 
 ```bash
 git diff --check
-git diff -- skill/external-plugins.json tools/release.test.mjs
-git add skill/external-plugins.json tools/release.test.mjs
+git diff -- skill/external-packages.json tools/release.test.mjs
+git add skill/external-packages.json tools/release.test.mjs
 git commit -m "feat: recommend OpenCLI as external tool"
 ```
 

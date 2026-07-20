@@ -6,7 +6,7 @@ Register OpenCLI as a default, approval-gated external tool in `agent-seed` for 
 
 ## Scope
 
-- Add an `opencli` entry to `skill/external-plugins.json`.
+- Add an `opencli` entry to `skill/external-packages.json`.
 - Offer the installation during Agent Seed activation whenever a supported platform is detected or requested.
 - Keep the installation network-backed and owner-approved.
 - Describe validation and browser-specific prerequisites in the manifest entry.
@@ -21,7 +21,7 @@ Register OpenCLI as a default, approval-gated external tool in `agent-seed` for 
 
 ## Architecture
 
-`skill/external-plugins.json` remains the sole registry for the recommendation. The existing Activation Preflight already requires every matching external plugin to be offered before onboarding proceeds; OpenCLI uses that mechanism without adding a new distribution type.
+`skill/external-packages.json` remains the sole registry for the recommendation. The existing Activation Preflight already requires every matching external plugin to be offered before onboarding proceeds; OpenCLI uses that mechanism without adding a new distribution type.
 
 Each supported platform receives the same two upstream installation actions after owner approval:
 
@@ -54,7 +54,7 @@ No platform action modifies browser configuration or installs an extension.
 
 ## Testing
 
-Extend `tools/release.test.mjs` with a focused test that loads `skill/external-plugins.json` and asserts that OpenCLI:
+Extend `tools/release.test.mjs` with a focused test that loads `skill/external-packages.json` and asserts that OpenCLI:
 
 - is present in `recommended_external_plugins`;
 - is marked network-backed, approval-gated, and ask-first;

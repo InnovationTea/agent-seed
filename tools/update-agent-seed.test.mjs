@@ -16,6 +16,10 @@ function importUpdater(cacheKey = "") {
   return import(cacheKey ? `${updaterScriptUrl}?${cacheKey}=${Date.now()}` : updaterScriptUrl);
 }
 
+function futureDeadline() {
+  return new Date(Date.now() + 60_000).toISOString();
+}
+
 test("agent-seed updater compares release versions and extracts the agent-seed asset", async () => {
   const updater = await importUpdater();
   const latestRelease = {
@@ -513,7 +517,7 @@ test("agent-seed deferred helper does not replace a newer installed version", as
       sourceDir: path.join(stageDir, "expanded"),
       backupDir: path.join(stageDir, "backup"),
       latestVersion: "v0.2.12",
-      deadlineAt: "2026-07-20T00:00:00.000Z",
+      deadlineAt: futureDeadline(),
     })}\n`);
 
     const result = await updater.runDeferredUpdate({ stagePath: stageDir });
@@ -578,7 +582,7 @@ test("agent-seed deferred helper rechecks superseded state before retrying", asy
       sourceDir: path.join(stageDir, "expanded"),
       backupDir: path.join(stageDir, "backup"),
       latestVersion: "v0.2.12",
-      deadlineAt: "2026-07-20T00:00:00.000Z",
+      deadlineAt: futureDeadline(),
     };
     let replaceCalls = 0;
 
