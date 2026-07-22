@@ -192,6 +192,12 @@ test("external packages config includes install metadata", async () => {
   assert.equal(config.activation_policy.missing_action, "must_offer_before_onboarding");
   assert.equal(config.activation_policy.requires_user_approval, true);
   assert.equal(config.activation_policy.skip_reason_required, true);
+  assert.deepEqual(config.activation_policy.recurring_install_prompt, {
+    applies_to: ["opencli"],
+    missing_action: "must_ask_every_activation_before_onboarding",
+    declined_action: "record_reason_and_continue",
+    previous_decline_suppresses_prompt: false,
+  });
 
   assert.ok(Array.isArray(config.recommended_external_plugins));
   assert.ok(config.recommended_external_plugins.length > 0);
@@ -240,6 +246,14 @@ test("bundled install manifests require activation preflight handling", async ()
     assert.equal(config.activation_policy.requires_user_approval, true);
     assert.equal(config.activation_policy.skip_reason_required, true);
   }
+
+  assert.equal(bundledSkills.activation_policy.recurring_install_prompt, undefined);
+  assert.deepEqual(bundledPackages.activation_policy.recurring_install_prompt, {
+    applies_to: ["git-code-tracker"],
+    missing_action: "must_ask_every_activation_before_onboarding",
+    declined_action: "record_reason_and_continue",
+    previous_decline_suppresses_prompt: false,
+  });
 });
 
 test("bundled direct skill manifest registers every bundled skill directory", async () => {

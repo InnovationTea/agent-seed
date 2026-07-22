@@ -3,7 +3,15 @@
     "on_agent_seed_start": "must_check",
     "default_install_action": "must_offer_before_onboarding",
     "requires_user_approval": true,
-    "skip_reason_required": true
+    "skip_reason_required": true,
+    "recurring_install_prompt": {
+      "applies_to": [
+        "git-code-tracker"
+      ],
+      "missing_action": "must_ask_every_activation_before_onboarding",
+      "declined_action": "record_reason_and_continue",
+      "previous_decline_suppresses_prompt": false
+    }
   },
   "bundled_packages": [
     {
