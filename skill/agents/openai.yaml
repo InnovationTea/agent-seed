@@ -1,4 +1,4 @@
 interface:
   display_name: "Agent Seed"
   short_description: "Distill project knowledge, framework conventions, and agent runbooks."
-  default_prompt: "Use $agent-seed to interview me as the knowledgeable developer, scan this project including private framework conventions, distill or update setup/build/test/debug/tooling knowledge into AGENTS.md plus agents.d runbooks, inspect external-packages.json, bundled-skills.json, and bundled-packages.json before onboarding work continues, and offer default applicable installs that require approval before running them."
+  default_prompt: "Use $agent-seed to interview me as the knowledgeable developer, scan this project including private framework conventions, distill or update setup/build/test/debug/tooling knowledge into AGENTS.md plus agents.d runbooks, inspect external-packages.json, bundled-skills.json, and bundled-packages.json before onboarding work continues, and on every activation ask whether to install missing applicable git-code-tracker and OpenCLI integrations before onboarding; installation still requires approval."

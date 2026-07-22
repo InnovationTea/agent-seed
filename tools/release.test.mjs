@@ -615,6 +615,23 @@ test("external plugins do not default to archived DevEco Toolbox", async () => {
   );
 });
 
+test("Agent Seed documents recurring prompts for required integrations", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const prompt = await readFile(path.join(rootDir, "skill", "agents", "openai.yaml"), "utf8");
+
+  assert.match(skill, /git-code-tracker/i);
+  assert.match(skill, /OpenCLI/i);
+  assert.match(skill, /every activation/i);
+  assert.match(skill, /record.*reason.*continue/i);
+  assert.match(skill, /must not suppress.*future.*prompt/i);
+  assert.match(skill, /install_prompt_history/);
+  assert.match(skill, /\.agents\/agent-seed\.json/);
+  assert.match(prompt, /every activation/i);
+  assert.match(prompt, /git-code-tracker/i);
+  assert.match(prompt, /OpenCLI/i);
+});
+
 test("Codex default prompt tells agents to offer default bundled package installs", async () => {
   const promptPath = path.join(process.cwd(), "skill", "agents", "openai.yaml");
   const prompt = await readFile(promptPath, "utf8");
