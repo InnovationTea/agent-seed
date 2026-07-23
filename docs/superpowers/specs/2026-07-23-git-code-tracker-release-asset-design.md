@@ -9,7 +9,7 @@ without carrying the full upstream project in the Agent Seed package.
 ## Asset And Platform Selection
 
 Agent Seed distributes the upstream release archive
-`ai-commit-statistic-skill-v1.0.3.zip` as its sole tracker asset. The archive
+`packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip` as its sole tracker asset. The archive
 contains platform-ready roots:
 
 - `.claude/skills/ai-code-tracker/`

@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_ARCHIVE_PATH = path.join(scriptDir, "..", "assets", "ai-commit-statistic-skill-v1.0.3.zip");
+const DEFAULT_ARCHIVE_PATH = path.join(scriptDir, "..", "packages", "git-code-tracker", "ai-commit-statistic-skill-v1.0.3.zip");
 
 const PLATFORMS = {
   opencode: {

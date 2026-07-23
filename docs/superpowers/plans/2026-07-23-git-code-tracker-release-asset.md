@@ -4,7 +4,7 @@
 
 **Goal:** Install the upstream tracker release asset into the detected project platform and initialize it without vendoring its full repository.
 
-**Architecture:** Store the exact v1.0.3 release zip in skill/assets/. A focused Node installer resolves one platform from an explicit option, agent environment, or project markers; extracts only that platform's skill directory; runs the copied install.js; and verifies it. Manifest and documentation point to this installer.
+**Architecture:** Store the exact v1.0.3 release zip in skill/packages/git-code-tracker/. A focused Node installer resolves one platform from an explicit option, agent environment, or project markers; extracts only that platform's skill directory; runs the copied install.js; and verifies it. Manifest and documentation point to this installer.
 
 **Tech Stack:** Node.js ESM, node:test, filesystem and child-process APIs, Windows PowerShell Expand-Archive.
 
@@ -12,7 +12,7 @@
 
 ## File Structure
 
-- Create: skill/assets/ai-commit-statistic-skill-v1.0.3.zip - exact upstream release asset.
+- Create: skill/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip - exact upstream release asset.
 - Create: skill/scripts/install-git-code-tracker.mjs - detection, extraction, initialization, CLI.
 - Create: tools/git-code-tracker-release.test.mjs - installer behavior tests.
 - Modify: skill/bundled-packages.json - release source, asset path, new install command.
@@ -99,13 +99,13 @@ git commit -m "test: define tracker release asset installation"
 ### Task 2: Implement Copy, Initialization, And Verification
 
 **Files:**
-- Create: skill/assets/ai-commit-statistic-skill-v1.0.3.zip
+- Create: skill/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip
 - Create: skill/scripts/install-git-code-tracker.mjs
 - Test: tools/git-code-tracker-release.test.mjs
 
 - [ ] **Step 1: Add the exact release asset**
 
-Download https://github.com/yooocen/git-code-tracker/releases/download/v1.0.3/ai-commit-statistic-skill-v1.0.3.zip into skill/assets/. Verify it includes:
+Download https://github.com/yooocen/git-code-tracker/releases/download/v1.0.3/ai-commit-statistic-skill-v1.0.3.zip into skill/packages/git-code-tracker/. Verify it includes:
 
 ~~~text
 .claude/skills/ai-code-tracker/SKILL.md
@@ -128,7 +128,7 @@ Expected: PASS, proving automatic Claude detection, ambiguity and unsupported-pl
 - [ ] **Step 4: Commit the implementation**
 
 ~~~bash
-git add skill/assets/ai-commit-statistic-skill-v1.0.3.zip skill/scripts/install-git-code-tracker.mjs tools/git-code-tracker-release.test.mjs
+git add skill/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip skill/scripts/install-git-code-tracker.mjs tools/git-code-tracker-release.test.mjs
 git commit -m "feat: install tracker from release asset"
 ~~~
 
@@ -145,7 +145,7 @@ git commit -m "feat: install tracker from release asset"
 ~~~js
 assert.equal(tracker.source.type, "github-release-asset");
 assert.equal(tracker.source.asset, "ai-commit-statistic-skill-v1.0.3.zip");
-assert.equal(tracker.asset_path, "assets/ai-commit-statistic-skill-v1.0.3.zip");
+assert.equal(tracker.asset_path, "packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip");
 assert.match(tracker.default_install.command, /scripts\/install-git-code-tracker\.mjs/);
 assert.equal(tracker.default_install.auto_detect_platform, true);
 ~~~
@@ -210,12 +210,12 @@ Expected: PASS.
 
 Run: make release VERSION=v1.0.4-test
 
-Expected: exit code 0; outputs/agent-seed/assets/ai-commit-statistic-skill-v1.0.3.zip and outputs/agent-seed/scripts/install-git-code-tracker.mjs both exist.
+Expected: exit code 0; outputs/agent-seed/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip and outputs/agent-seed/scripts/install-git-code-tracker.mjs both exist.
 
 - [ ] **Step 4: Commit the removal and release coverage**
 
 ~~~bash
-git add Makefile tools/release.test.mjs tools/git-code-tracker-release.test.mjs skill/bundled-packages.json skill/references/output-assets.md README.md skill/assets/ai-commit-statistic-skill-v1.0.3.zip skill/scripts/install-git-code-tracker.mjs
+git add Makefile tools/release.test.mjs tools/git-code-tracker-release.test.mjs skill/bundled-packages.json skill/references/output-assets.md README.md skill/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip skill/scripts/install-git-code-tracker.mjs
 git add -u skill/packages/git-code-tracker
 git commit -m "refactor: remove vendored tracker repository"
 ~~~

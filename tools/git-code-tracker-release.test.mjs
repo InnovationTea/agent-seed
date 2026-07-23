@@ -9,7 +9,7 @@ import test from "node:test";
 import { installGitCodeTracker, selectPlatforms } from "../skill/scripts/install-git-code-tracker.mjs";
 
 const execFileAsync = promisify(execFile);
-const archivePath = path.join(process.cwd(), "skill", "assets", "ai-commit-statistic-skill-v1.0.3.zip");
+const archivePath = path.join(process.cwd(), "skill", "packages", "git-code-tracker", "ai-commit-statistic-skill-v1.0.3.zip");
 
 async function exists(filePath) {
   try {

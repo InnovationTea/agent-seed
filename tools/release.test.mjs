@@ -330,7 +330,7 @@ test("git-code-tracker release asset supports codeagent-cli .cac installation", 
   assert.equal(tracker.source.ref, "refs/tags/v1.0.3");
   assert.equal(tracker.source.commit, "66c048422dee2e433583cb97bb3a71efd0fcfbef");
   assert.equal(tracker.source.asset, "ai-commit-statistic-skill-v1.0.3.zip");
-  assert.equal(tracker.asset_path, "assets/ai-commit-statistic-skill-v1.0.3.zip");
+  assert.equal(tracker.asset_path, "packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip");
   assert.equal(tracker.default_install.auto_detect_platform, true);
   assert.match(tracker.default_install.command, /scripts\/install-git-code-tracker\.mjs/);
   assert.ok(tracker.default_install.writes.includes(".cac/skills/ai-code-tracker"));
@@ -362,7 +362,11 @@ test("git-code-tracker release asset guidance delegates initialization to the co
   assert.match(outputAssets, /copied skill.*install\.js/i);
   assert.match(readme, /release asset/i);
   assert.match(readme, /copied skill.*install\.js/i);
-  await assert.rejects(stat(path.join(rootDir, "skill", "packages", "git-code-tracker")), /ENOENT/);
+  const packageDir = path.join(rootDir, "skill", "packages", "git-code-tracker");
+  assert.deepEqual(
+    (await readdir(packageDir)).sort(),
+    ["ai-commit-statistic-skill-v1.0.3.zip"],
+  );
 });
 
 test("core instructions recognize codeagent-cli platform evidence", async () => {

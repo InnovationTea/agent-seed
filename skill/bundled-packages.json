@@ -25,7 +25,7 @@
         "commit": "66c048422dee2e433583cb97bb3a71efd0fcfbef",
         "asset": "ai-commit-statistic-skill-v1.0.3.zip"
       },
-      "asset_path": "assets/ai-commit-statistic-skill-v1.0.3.zip",
+      "asset_path": "packages/git-code-tracker/ai-commit-statistic-skill-v1.0.3.zip",
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
