@@ -135,13 +135,13 @@ During Agent Seed activation, `/agent-seed` authorizes a read-only update prefli
 ### `git-code-tracker`
 
 - Version: `v1.0.3`
-- Source: `git@github.com:yooocen/git-code-tracker.git`
+- Source: `https://github.com/yooocen/git-code-tracker` Release asset `ai-commit-statistic-skill-v1.0.3.zip`
 - Ref: `refs/tags/v1.0.3`
 - Commit: `66c048422dee2e433583cb97bb3a71efd0fcfbef`
-- Package path: `skill/packages/git-code-tracker`
-- Project-local installer: `node skill/packages/git-code-tracker/install-to-project.js <target-project>`
+- Bundled asset: `skill/assets/ai-commit-statistic-skill-v1.0.3.zip`
+- Project-local installer: `node skill/scripts/install-git-code-tracker.mjs <target-project>`
 
-Do not run the installer without explicit approval. It may write `.opencode/`, `.claude/`, `.cac/`, `.git/hooks`, `.ai-tracking`, `.gitignore`, and `AGENTS.md` in the target project.
+Do not run the installer without explicit approval. It automatically detects one supported platform from project or runtime evidence, copies only that platform's `ai-code-tracker` skill from the release asset, then runs the copied skill's `install.js`. The copied skill may write `.opencode/`, `.claude/`, `.cac/`, `.git/hooks`, `.ai-tracking`, `.gitignore`, and `AGENTS.md` in the target project. Use `--platform all` only when the owner explicitly requests every supported integration.
 
 ## Development Notes
 

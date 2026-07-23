@@ -17,20 +17,21 @@
     {
       "name": "git-code-tracker",
       "version": "v1.0.3",
-      "kind": "multi-platform-skill-package",
+      "kind": "multi-platform-release-asset",
       "source": {
-        "type": "git",
-        "repo": "git@github.com:yooocen/git-code-tracker.git",
+        "type": "github-release-asset",
+        "repo": "https://github.com/yooocen/git-code-tracker",
         "ref": "refs/tags/v1.0.3",
-        "commit": "66c048422dee2e433583cb97bb3a71efd0fcfbef"
+        "commit": "66c048422dee2e433583cb97bb3a71efd0fcfbef",
+        "asset": "ai-commit-statistic-skill-v1.0.3.zip"
       },
-      "path": "packages/git-code-tracker",
-      "readme": "packages/git-code-tracker/README.md",
+      "asset_path": "assets/ai-commit-statistic-skill-v1.0.3.zip",
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
         "requires_user_approval": true,
-        "command": "node <package-dir>/install-to-project.js <target-project> --platform <detected-platform>",
+        "auto_detect_platform": true,
+        "command": "node scripts/install-git-code-tracker.mjs <target-project> [--platform <detected-platform>]",
         "writes": [
           ".opencode/skills/ai-code-tracker",
           ".claude/skills/ai-code-tracker",
