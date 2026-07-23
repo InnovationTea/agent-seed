@@ -319,16 +319,20 @@ test("bundled direct skills support codeagent-cli .cac targets", async () => {
   }
 });
 
-test("git-code-tracker package supports codeagent-cli .cac installation", async () => {
+test("git-code-tracker release asset supports codeagent-cli .cac installation", async () => {
   const rootDir = process.cwd();
   const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-packages.json"), "utf8"));
   const tracker = config.bundled_packages.find((entry) => entry.name === "git-code-tracker");
-  const installer = await readFile(path.join(rootDir, "skill", "packages", "git-code-tracker", "install-to-project.js"), "utf8");
 
   assert.ok(tracker, "expected git-code-tracker package entry");
   assert.equal(tracker.version, "v1.0.3");
+  assert.equal(tracker.source.type, "github-release-asset");
   assert.equal(tracker.source.ref, "refs/tags/v1.0.3");
   assert.equal(tracker.source.commit, "66c048422dee2e433583cb97bb3a71efd0fcfbef");
+  assert.equal(tracker.source.asset, "ai-commit-statistic-skill-v1.0.3.zip");
+  assert.equal(tracker.asset_path, "assets/ai-commit-statistic-skill-v1.0.3.zip");
+  assert.equal(tracker.default_install.auto_detect_platform, true);
+  assert.match(tracker.default_install.command, /scripts\/install-git-code-tracker\.mjs/);
   assert.ok(tracker.default_install.writes.includes(".cac/skills/ai-code-tracker"));
   assert.ok(tracker.default_install.writes.includes(".cac/commands"));
   assert.ok(tracker.default_install.writes.includes(".cac/settings.json"));
@@ -339,111 +343,26 @@ test("git-code-tracker package supports codeagent-cli .cac installation", async 
   assert.equal(platform.target_path, ".cac/skills/ai-code-tracker");
   assert.equal(platform.verification, "node .cac/skills/ai-code-tracker/scripts/install.js --check");
 
-  const cacSkillDir = path.join(rootDir, "skill", "packages", "git-code-tracker", ".cac", "skills", "ai-code-tracker");
-  await stat(path.join(cacSkillDir, "SKILL.md"));
-  await stat(path.join(cacSkillDir, "lib", "index.js"));
-  const cacInstallScript = await readFile(path.join(cacSkillDir, "scripts", "install.js"), "utf8");
-  const cacHookScript = await readFile(path.join(cacSkillDir, "scripts", "claude-code-hook.js"), "utf8");
-  const cacRuntime = await readFile(path.join(cacSkillDir, "lib", "cli", "install.js"), "utf8");
-  assert.match(cacInstallScript, /from "\.\.\/lib\/index\.js"/);
-  assert.match(cacInstallScript, /runInstall/);
-  assert.match(cacHookScript, /from "\.\.\/lib\/index\.js"/);
-  assert.match(cacHookScript, /runClaudeCodeHook/);
-  assert.match(cacRuntime, /tool === "codeagent-cli"/);
-  assert.match(cacRuntime, /\.cac", "settings\.json"/);
-  assert.match(cacRuntime, /tool === "codeagent-cli" \? "\.cac" : "\.claude"/);
-  assert.match(installer, /sourceCacSkill/);
-  assert.match(installer, /targetCacSkill/);
-  assert.match(installer, /\.cac/);
+  await stat(path.join(rootDir, "skill", tracker.asset_path));
+  const installer = await readFile(path.join(rootDir, "skill", "scripts", "install-git-code-tracker.mjs"), "utf8");
+  assert.match(installer, /codeagent-cli/);
+  assert.match(installer, /AI_CODE_TRACKER_PROCESS_TREE/);
 });
 
-test("git-code-tracker installer scopes installation to the selected platform", async () => {
-  const rootDir = process.cwd();
-  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-tracker-platform-"));
-
-  try {
-    await execFileAsync("git", ["init"], { cwd: targetDir });
-    await execFileAsync(process.execPath, [
-      path.join(rootDir, "skill", "packages", "git-code-tracker", "install-to-project.js"),
-      targetDir,
-      "--platform",
-      "claude",
-    ]);
-
-    assert.equal(await exists(path.join(targetDir, ".claude", "skills", "ai-code-tracker", "SKILL.md")), true);
-    assert.equal(await exists(path.join(targetDir, ".opencode", "skills", "ai-code-tracker", "SKILL.md")), false);
-    assert.equal(await exists(path.join(targetDir, ".cac", "skills", "ai-code-tracker", "SKILL.md")), false);
-
-    const agents = await readFile(path.join(targetDir, "AGENTS.md"), "utf8");
-    assert.match(agents, /load the Claude Code skill `ai-code-tracker`/);
-    assert.doesNotMatch(agents, /load the opencode skill `ai-code-tracker`/);
-  } finally {
-    await rm(targetDir, { recursive: true, force: true });
-  }
-});
-
-test("git-code-tracker package install command requires detected platform selection", async () => {
+test("git-code-tracker release asset guidance delegates initialization to the copied skill", async () => {
   const rootDir = process.cwd();
   const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-packages.json"), "utf8"));
   const tracker = config.bundled_packages.find((entry) => entry.name === "git-code-tracker");
   const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
 
   assert.ok(tracker, "expected git-code-tracker package entry");
-  assert.match(tracker.default_install.command, /--platform <detected-platform>/);
-  assert.match(outputAssets, /--platform <detected-platform>/);
-  assert.match(outputAssets, /detected or requested platform/i);
-});
-
-test("git-code-tracker platform skill docs and AGENTS rules are platform-specific", async () => {
-  const rootDir = process.cwd();
-  const packageDir = path.join(rootDir, "skill", "packages", "git-code-tracker");
-  const claudeSkill = await readFile(path.join(packageDir, ".claude", "skills", "ai-code-tracker", "SKILL.md"), "utf8");
-  const cacSkill = await readFile(path.join(packageDir, ".cac", "skills", "ai-code-tracker", "SKILL.md"), "utf8");
-  const claudeInstallScript = await readFile(path.join(packageDir, ".claude", "skills", "ai-code-tracker", "scripts", "install.js"), "utf8");
-  const cacInstallScript = await readFile(path.join(packageDir, ".cac", "skills", "ai-code-tracker", "scripts", "install.js"), "utf8");
-  const claudeTargetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-tracker-claude-"));
-  const cacTargetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-tracker-cac-"));
-
-  try {
-    assert.match(claudeSkill, /node \.claude\/skills\/ai-code-tracker\/scripts\/install\.js --check/);
-    assert.match(claudeSkill, /current Claude Code session/);
-    assert.doesNotMatch(claudeSkill, /\.opencode\/skills\/ai-code-tracker\/scripts\/install\.js/);
-    assert.doesNotMatch(claudeSkill, /current opencode session/);
-    assert.match(claudeInstallScript, /from "\.\.\/lib\/index\.js"/);
-    assert.match(claudeInstallScript, /runInstall/);
-
-    assert.match(cacSkill, /current codeagent-cli session/);
-    assert.doesNotMatch(cacSkill, /current opencode session/);
-    assert.match(cacInstallScript, /from "\.\.\/lib\/index\.js"/);
-    assert.match(cacInstallScript, /runInstall/);
-
-    await execFileAsync("git", ["init"], { cwd: claudeTargetDir });
-    await execFileAsync(process.execPath, [
-      path.join(packageDir, "install-to-project.js"),
-      claudeTargetDir,
-      "--platform",
-      "claude",
-    ]);
-    const claudeAgents = await readFile(path.join(claudeTargetDir, "AGENTS.md"), "utf8");
-    assert.match(claudeAgents, /load the Claude Code skill `ai-code-tracker`/);
-    assert.match(claudeAgents, /restart the current Claude Code session/);
-    assert.doesNotMatch(claudeAgents, /load the opencode skill `ai-code-tracker`/);
-
-    await execFileAsync("git", ["init"], { cwd: cacTargetDir });
-    await execFileAsync(process.execPath, [
-      path.join(packageDir, "install-to-project.js"),
-      cacTargetDir,
-      "--platform",
-      "codeagent-cli",
-    ]);
-    const cacAgents = await readFile(path.join(cacTargetDir, "AGENTS.md"), "utf8");
-    assert.match(cacAgents, /load the codeagent-cli skill `ai-code-tracker`/);
-    assert.match(cacAgents, /restart the current codeagent-cli session/);
-    assert.doesNotMatch(cacAgents, /load the opencode skill `ai-code-tracker`/);
-  } finally {
-    await rm(claudeTargetDir, { recursive: true, force: true });
-    await rm(cacTargetDir, { recursive: true, force: true });
-  }
+  assert.match(tracker.default_install.command, /install-git-code-tracker\.mjs/);
+  assert.match(outputAssets, /release asset/i);
+  assert.match(outputAssets, /copied skill.*install\.js/i);
+  assert.match(readme, /release asset/i);
+  assert.match(readme, /copied skill.*install\.js/i);
+  await assert.rejects(stat(path.join(rootDir, "skill", "packages", "git-code-tracker")), /ENOENT/);
 });
 
 test("core instructions recognize codeagent-cli platform evidence", async () => {
