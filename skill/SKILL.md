@@ -13,7 +13,7 @@ This skill can also distribute bundled direct skills listed in `bundled-skills.j
 
 ## Version And Self Update
 
-Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. On every Agent Seed activation, complete this self-update preflight before onboarding conclusions in this order: read `VERSION.json` from this skill root when present, read the local `.agents/agent-seed.json` state from the target root when present, then must run `node scripts/update-agent-seed.mjs --json`. Invoking `/agent-seed` authorizes this read-only GitHub latest-release check. The only exceptions are when the owner explicitly asks to skip the update check in the current turn or the local config sets `self_update.check_on_start` to `false`.
+Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. On every Agent Seed activation, complete this self-update preflight before onboarding conclusions in this order: read `VERSION.json` from this skill root when present, read the local `.agents/agent-seed.json` state from the target root when present, then run `node scripts/update-agent-seed.mjs --json` unless the owner explicitly asks to skip the check or the local config sets `self_update.check_on_start` to `false`.
 
 The updater checks the GitHub latest release API for the configured repository and compares the local version with the latest tag:
 
@@ -21,7 +21,9 @@ The updater checks the GitHub latest release API for the configured repository a
 node scripts/update-agent-seed.mjs --json
 ```
 
-Treat the GitHub latest release check as the sole read-only network exception to the normal ask-first policy. `self_update.last_check` is historical state only: agents must not use `self_update.last_check` to skip this activation's check, including when its status is `updated`; its status, versions, and timestamp describe only the past. If the check cannot run because the owner withdraws authorization or network execution fails, do not treat Agent Seed as current or checked. When local-state writes are authorized, record an owner-declined check as `self_update.last_check.status: "deferred"` with `reason: "network-denied"`, then continue the rest of the Activation Preflight and report that update status is unknown. Keep reminding on later activations until a network-backed check succeeds, the owner disables `self_update.check_on_start`, or the owner explicitly defers the reminder again.
+By default, `self_update.check_interval_hours` is 24. A successful `current` or `available` result inside that window is returned from local state without a network request; malformed, deferred, queued, failed, or expired state always triggers a fresh check. Use `node scripts/update-agent-seed.mjs --json --force-check` to bypass the cache. Invoking `/agent-seed` authorizes this GitHub latest-release check and recording the resulting local check state. If the check cannot run because the owner withdraws authorization or network execution fails, do not treat Agent Seed as current or checked. When local-state writes are authorized, record an owner-declined check as `self_update.last_check.status: "deferred"` with `reason: "network-denied"`, then continue the rest of the Activation Preflight and report that update status is unknown.
+
+`self_update.update_mode` defaults to `notify`: report an available update once and await approval before applying it. `manual` reports the state without recommending an update. Neither mode authorizes replacement; `--apply` remains the separate owner-approval boundary.
 
 The updater only applies changes when `--apply` is passed:
 
@@ -33,7 +35,7 @@ Never run `--apply` without owner approval. If `VERSION.json` is missing because
 
 When `--apply` is approved, the updater downloads `agent-seed.zip`, expands it, moves the current skill root to a temporary backup, and copies the expanded package into the original target path. This is a replacement update, not a merge: files that existed only in the old skill directory are removed. If copying the new package fails, the updater restores the backup before reporting the error.
 
-On Windows, the current agent host may lock the installed skill directory. If an approved replacement hits that lock, the updater stages the verified package in the current user's local application-data directory, records `status: "queued"` with `reason: "windows-directory-locked"`, and starts an external helper. The update automatically completes after the agent host exits and releases the directory lock. Do not run another update command while it is queued. The helper records `updated` after it verifies the installed version; only a terminal `failed` state requires another `--apply` command.
+On Windows, the current agent host may lock the installed skill directory. If an approved replacement hits that lock, the updater stages the verified package in the current user's local application-data directory, records `status: "queued"` with `reason: "windows-directory-locked"`, and starts an external helper. The update automatically completes after the agent host exits and releases the directory lock. Do not run another update command while it is queued. After it verifies the installed version, the helper records `updated` and sends a best-effort Windows desktop notification that the new version is ready for the next session; failure to show that notification does not change update status. Only a terminal `failed` state requires another `--apply` command.
 
 Use `.agents/agent-seed.json` as the unified local Agent Seed config and state file. Proxy settings for the updater live under `self_update.proxy`; for example:
 
@@ -42,6 +44,8 @@ Use `.agents/agent-seed.json` as the unified local Agent Seed config and state f
   "knowledge_asset_write_mode": "ask-each-change",
   "self_update": {
     "check_on_start": true,
+    "check_interval_hours": 24,
+    "update_mode": "notify",
     "proxy": {
       "https_proxy": "http://proxy.example:8080",
       "no_proxy": "localhost,127.0.0.1"

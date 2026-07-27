@@ -691,12 +691,12 @@ test("core skill instructions document version metadata and self update flow", a
   assert.match(skill, /\.agents\/agent-seed\.json/);
 });
 
-test("activation policy requires a fresh read-only update check by default", async () => {
+test("activation policy documents cached update checks and explicit apply", async () => {
   const skill = await readFile(path.join(process.cwd(), "skill", "SKILL.md"), "utf8");
 
-  assert.match(skill, /must run `node scripts\/update-agent-seed\.mjs --json`/i);
-  assert.match(skill, /must not use `self_update\.last_check`.*skip/i);
-  assert.match(skill, /explicitly asks to skip.*check_on_start.*false/is);
+  assert.match(skill, /check_interval_hours.*24/is);
+  assert.match(skill, /--force-check/);
+  assert.match(skill, /update_mode.*notify/is);
   assert.match(skill, /Never run `--apply` without owner approval/);
 });
 
@@ -712,6 +712,7 @@ test("core skill instructions document deferred Windows self updates", async () 
     assert.match(document, /windows-directory-locked/i);
     assert.match(document, /(?:automatically completes|completes automatically) after the agent host exits and releases the (?:directory )?lock/i);
     assert.match(document, /terminal `failed` state (?:requires another `--apply` command|needs a new `--apply` command)/i);
+    assert.match(document, /notification/i);
   }
 });
 

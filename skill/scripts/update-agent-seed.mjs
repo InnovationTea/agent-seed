@@ -21,6 +21,8 @@ const DEFERRED_UPDATE_TIMEOUT_MS = 12 * 60 * 60 * 1_000;
 const FAILED_STAGE_RETENTION_MS = 7 * 24 * 60 * 60 * 1_000;
 const TARGET_LOCK_RETRY_MS = 100;
 const TARGET_LOCK_STALE_MS = 5 * 60 * 1_000;
+const DEFAULT_CHECK_INTERVAL_HOURS = 24;
+const SUCCESSFUL_CHECK_STATUSES = new Set(["current", "available"]);
 
 export function compareVersions(left, right) {
   const leftParts = normalizeVersion(left);
@@ -65,6 +67,41 @@ export function buildUpdatePlan({ currentVersion, latestRelease, assetName = DEF
     latestVersion,
     releaseUrl: latestRelease.html_url || "",
     asset,
+  };
+}
+
+export function shouldCheckForUpdates({ selfUpdate = {}, currentVersion = "", now = new Date() } = {}) {
+  const lastCheck = selfUpdate?.last_check;
+  const checkedAt = Date.parse(lastCheck?.checked_at || "");
+  const intervalHours = normalizeCheckIntervalHours(selfUpdate?.check_interval_hours);
+  const hasMatchingVersion = typeof lastCheck?.current_version === "string"
+    && lastCheck.current_version !== ""
+    && lastCheck.current_version === currentVersion
+    && typeof lastCheck.latest_version === "string"
+    && lastCheck.latest_version !== "";
+
+  return !SUCCESSFUL_CHECK_STATUSES.has(lastCheck?.status)
+    || !Number.isFinite(checkedAt)
+    || !hasMatchingVersion
+    || now.getTime() - checkedAt >= intervalHours * 60 * 60 * 1_000;
+}
+
+function normalizeCheckIntervalHours(value) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    return DEFAULT_CHECK_INTERVAL_HOURS;
+  }
+
+  return value;
+}
+
+function buildCachedUpdatePlan(lastCheck) {
+  return {
+    hasUpdate: lastCheck.status === "available",
+    currentVersion: lastCheck.current_version || "v0.0.0",
+    latestVersion: lastCheck.latest_version || lastCheck.current_version || "v0.0.0",
+    releaseUrl: "",
+    asset: null,
+    cached: true,
   };
 }
 
@@ -116,6 +153,19 @@ async function main(argv = process.argv.slice(2)) {
   }
 
   const currentVersion = options.currentVersion || versionMetadata.version || "v0.0.0";
+  const selfUpdate = agentSeedConfig.self_update || {};
+  if (!options.apply && !options.forceCheck && !shouldCheckForUpdates({ selfUpdate, currentVersion })) {
+    const updatePlan = buildCachedUpdatePlan(selfUpdate.last_check);
+    if (options.json) {
+      console.log(JSON.stringify(updatePlan, null, 2));
+    } else if (updatePlan.hasUpdate) {
+      console.log(`agent-seed update available: ${updatePlan.currentVersion} -> ${updatePlan.latestVersion} (cached check)`);
+    } else {
+      console.log(`agent-seed is current (${updatePlan.currentVersion}, cached check).`);
+    }
+    return;
+  }
+
   let latestRelease;
   try {
     latestRelease = await fetchLatestRelease(repository, { env });
@@ -138,6 +188,13 @@ async function main(argv = process.argv.slice(2)) {
     currentVersion,
     latestRelease,
     assetName: options.assetName || DEFAULT_ASSET_NAME,
+  });
+  await writeAgentSeedUpdateState({
+    configPath,
+    status: updatePlan.hasUpdate ? "available" : "current",
+    reason: "latest-release",
+    currentVersion,
+    latestVersion: updatePlan.latestVersion,
   });
 
   if (options.json) {
@@ -436,6 +493,7 @@ function normalizeVersion(version) {
 function parseArgs(argv) {
   const options = {
     apply: false,
+    forceCheck: false,
     json: false,
   };
 
@@ -444,6 +502,8 @@ function parseArgs(argv) {
 
     if (arg === "--apply") {
       options.apply = true;
+    } else if (arg === "--force-check") {
+      options.forceCheck = true;
     } else if (arg === "--json") {
       options.json = true;
     } else if (arg === "--repository") {
@@ -697,6 +757,7 @@ export async function runDeferredUpdate({
   sleep = delay,
   now = () => new Date(),
   replace = replaceDirectory,
+  notifier = notifyWindowsUpdateCompleted,
 } = {}) {
   const suppliedPath = path.resolve(stagePath);
   const recordPath = path.basename(suppliedPath) === DEFERRED_STAGE_RECORD
@@ -751,6 +812,11 @@ export async function runDeferredUpdate({
         now: now(),
       });
       await appendDeferredLog(stageDir, "replacement completed");
+      try {
+        notifier({ version: stage.latestVersion });
+      } catch {
+        // A desktop notification cannot change an already verified update result.
+      }
       await rm(stageDir, { recursive: true, force: true });
       return { status: "updated", version: stage.latestVersion };
     }
@@ -775,6 +841,33 @@ export async function runDeferredUpdate({
       await sleep(DEFERRED_RETRY_DELAYS_MS[Math.min(attempt, DEFERRED_RETRY_DELAYS_MS.length - 1)]);
       attempt += 1;
     }
+  }
+}
+
+export function notifyWindowsUpdateCompleted({ platform = process.platform, version = "", runner = spawn } = {}) {
+  if (platform !== "win32") {
+    return false;
+  }
+
+  const notificationScript = [
+    "Add-Type -AssemblyName System.Windows.Forms",
+    "$notification = New-Object System.Windows.Forms.NotifyIcon",
+    "$notification.Icon = [System.Drawing.SystemIcons]::Information",
+    "$notification.Visible = $true",
+    "$notification.ShowBalloonTip(10000, 'Agent Seed updated', ('Version ' + $args[0] + ' is ready for your next session.'), [System.Windows.Forms.ToolTipIcon]::Info)",
+    "Start-Sleep -Milliseconds 10500",
+    "$notification.Dispose()",
+  ].join("; ");
+
+  try {
+    runner(
+      "powershell.exe",
+      ["-NoProfile", "-NonInteractive", "-WindowStyle", "Hidden", "-Command", notificationScript, version],
+      { detached: true, stdio: "ignore", windowsHide: true },
+    ).unref();
+    return true;
+  } catch {
+    return false;
   }
 }
 
