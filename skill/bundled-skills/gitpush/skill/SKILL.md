@@ -16,11 +16,19 @@ Run one fork-based commit-and-push workflow. Treat squash as an optional prepara
 ## Workflow
 
 1. Record the start time.
-2. Verify the current directory is inside a Git worktree:
+2. Verify the current directory is inside a Git worktree and pin that worktree for the entire workflow. This supports both the primary worktree and any linked worktree created with `git worktree add`:
 
 ```bash
 git rev-parse --is-inside-work-tree
+CURRENT_WORKTREE=$(git rev-parse --show-toplevel)
+git worktree list --porcelain
 ```
+
+The `worktree` entry whose path is `CURRENT_WORKTREE` is the only worktree in scope. Run every remaining Git command from that directory (or use `git -C "$CURRENT_WORKTREE" ...`). In command blocks below, `git` is shorthand for that pinned context.
+
+- Never change to another listed worktree, the common Git directory, or the repository's primary worktree during this workflow.
+- `git add -A`, `git diff`, `git commit`, and `git reset --soft` affect the pinned worktree and its checked-out branch only; they do not include uncommitted files from other worktrees.
+- Remotes and fetched refs are shared by all worktrees. Fetching is therefore safe, but commit, reset, and push decisions must continue to use the pinned branch from this worktree.
 
 3. Verify `HEAD` is attached to a branch:
 
