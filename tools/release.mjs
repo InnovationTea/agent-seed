@@ -34,6 +34,10 @@ export async function releaseSkill({
     commit,
     releaseManifestName: path.basename(releaseManifestPath),
   });
+  await materializeBundledSkillVersions({
+    manifestPath: path.join(expandedDir, "bundled-skills.json"),
+    version,
+  });
   await createZip(expandedDir, zipPath);
   const bundledSkillArtifacts = await releaseBundledDirectSkills({ skillDir, outputDir });
   await writeReleaseManifest({
@@ -47,6 +51,24 @@ export async function releaseSkill({
   });
 
   return { expandedDir, zipPath, releaseManifestPath, bundledSkillArtifacts };
+}
+
+async function materializeBundledSkillVersions({ manifestPath, version }) {
+  const manifest = await readJsonIfExists(manifestPath);
+  if (!manifest) {
+    return;
+  }
+
+  for (const bundledSkill of manifest.bundled_skills || []) {
+    if (bundledSkill.version === "$AGENT_SEED_VERSION") {
+      bundledSkill.version = version;
+    }
+    if (typeof bundledSkill.version !== "string" || bundledSkill.version.trim() === "") {
+      throw new Error(`Invalid bundled skill version: ${bundledSkill.name}`);
+    }
+  }
+
+  await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
 }
 
 async function writeVersionMetadata({ filePath, packageName, version, repository, commit, releaseManifestName }) {
