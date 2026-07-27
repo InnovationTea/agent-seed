@@ -325,12 +325,12 @@ test("git-code-tracker release asset supports codeagent-cli .cac installation", 
   const tracker = config.bundled_packages.find((entry) => entry.name === "git-code-tracker");
 
   assert.ok(tracker, "expected git-code-tracker package entry");
-  assert.equal(tracker.version, "v1.0.4");
+  assert.equal(tracker.version, "v1.0.5");
   assert.equal(tracker.source.type, "github-release-asset");
-  assert.equal(tracker.source.ref, "refs/tags/v1.0.4");
-  assert.equal(tracker.source.commit, "8cb0855155c8ad7483232e9d5679ee19d8714df8");
-  assert.equal(tracker.source.asset, "ai-commit-statistic-skill-v1.0.4.zip");
-  assert.equal(tracker.asset_path, "packages/git-code-tracker/ai-commit-statistic-skill-v1.0.4.zip");
+  assert.equal(tracker.source.ref, "refs/tags/v1.0.5");
+  assert.equal(tracker.source.commit, "6c11b335a3284b58619290ec228545f07be3d707");
+  assert.equal(tracker.source.asset, "ai-commit-statistic-skill-v1.0.5.zip");
+  assert.equal(tracker.asset_path, "packages/git-code-tracker/ai-commit-statistic-skill-v1.0.5.zip");
   assert.equal(tracker.default_install.auto_detect_platform, true);
   assert.match(tracker.default_install.command, /scripts\/install-git-code-tracker\.mjs/);
   assert.ok(tracker.default_install.writes.includes(".cac/skills/ai-code-tracker"));
@@ -380,7 +380,7 @@ test("git-code-tracker release asset guidance delegates initialization to the co
   const packageDir = path.join(rootDir, "skill", "packages", "git-code-tracker");
   assert.deepEqual(
     (await readdir(packageDir)).sort(),
-    ["ai-commit-statistic-skill-v1.0.4.zip"],
+    ["ai-commit-statistic-skill-v1.0.5.zip"],
   );
 });
 
