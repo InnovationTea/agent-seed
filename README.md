@@ -103,10 +103,16 @@ Bundled direct skill artifacts are generated from `skill/bundled-skills.json`, n
 
 ## Skill Self Update
 
-Released `agent-seed` packages include `scripts/update-agent-seed.mjs`. From an installed release package, check for a newer GitHub release:
+Released `agent-seed` packages include `scripts/update-agent-seed.mjs`. From an installed release package, check for a newer GitHub release. Successful `current` and `available` results are cached for 24 hours by default, so routine activations do not repeat the network request:
 
 ```sh
 node scripts/update-agent-seed.mjs --json
+```
+
+Bypass that cache when an immediate check is needed:
+
+```sh
+node scripts/update-agent-seed.mjs --json --force-check
 ```
 
 Apply the update only after deciding to replace the installed skill directory:
@@ -117,7 +123,7 @@ node scripts/update-agent-seed.mjs --apply
 
 The updater reads `VERSION.json` for the current repository/version, calls the GitHub latest release API, downloads `agent-seed.zip`, expands it, and replaces the current skill root with the expanded package. Replacement first moves the old skill root to a temporary backup, copies the new package into place, and rolls back the backup if the copy fails. Files that existed only in the old package are removed instead of lingering as stale leftovers. When running from the repository source tree instead of a release package, pass `--repository owner/repo` because `VERSION.json` is generated only during release packaging.
 
-On Windows, a running agent host can lock the installed skill directory. In that case an approved `--apply` stages the verified package in the user's local application-data directory, returns a queued result with `windows-directory-locked`, and starts a detached helper. The update completes automatically after the agent host exits and releases the lock. The helper records `updated` only after it verifies the installed `VERSION.json`; terminal `failed` state needs a new `--apply` command.
+On Windows, a running agent host can lock the installed skill directory. In that case an approved `--apply` stages the verified package in the user's local application-data directory, returns a queued result with `windows-directory-locked`, and starts a detached helper. The update completes automatically after the agent host exits and releases the lock. The helper records `updated` only after it verifies the installed `VERSION.json`, then sends a best-effort Windows desktop notification that the update is ready for the next session; terminal `failed` state needs a new `--apply` command.
 
 When `HTTPS_PROXY`, `HTTP_PROXY`, or `ALL_PROXY` is set, the updater applies the proxy itself for the GitHub release check and asset download. If no updater or environment proxy is configured, the updater also checks Git's `http.proxy`/`https.proxy` settings and, on Windows, the current user's explicit system proxy settings, then reuses the discovered proxy for the GitHub release check. If an interactive update check still fails with a proxy-like network error and no proxy is configured, the updater asks for an HTTPS proxy URL, saves it to `.agents/agent-seed.json`, and retries once.
 
@@ -128,7 +134,7 @@ node scripts/update-agent-seed.mjs --set-https-proxy http://proxy.example:8080
 node scripts/update-agent-seed.mjs --set-no-proxy localhost,127.0.0.1
 ```
 
-During Agent Seed activation, `/agent-seed` authorizes a read-only update preflight by default: read the installed `VERSION.json`, read the target project's `.agents/agent-seed.json`, then run `node scripts/update-agent-seed.mjs --json`. Only an explicit per-turn request to skip the check or `self_update.check_on_start: false` may suppress it. `self_update.last_check` is historical state and cannot prove the remote release is still current. Applying an update with `--apply` remains a separate approval. If the read-only check cannot run, agents must report the update status as unknown rather than treating the skill as current.
+During Agent Seed activation, `/agent-seed` reads the installed `VERSION.json`, reads the target project's `.agents/agent-seed.json`, then runs `node scripts/update-agent-seed.mjs --json`. The default 24-hour cache avoids another network request after a successful `current` or `available` result; use `--force-check` for an immediate refresh. `self_update.update_mode` defaults to `notify`, while `manual` only reports state. Applying an update with `--apply` remains a separate approval. If the check cannot run, agents must report the update status as unknown rather than treating the skill as current.
 
 ## Bundled Packages
 

@@ -54,6 +54,89 @@ test("agent-seed updater compares release versions and extracts the agent-seed a
   assert.equal(update.releaseUrl, latestRelease.html_url);
 });
 
+test("agent-seed updater skips a recent successful update check", async () => {
+  const updater = await importUpdater("check-interval");
+  const now = new Date("2026-07-27T12:00:00.000Z");
+
+  assert.equal(
+    updater.shouldCheckForUpdates({
+      currentVersion: "v0.2.12",
+      now,
+      selfUpdate: {
+        check_interval_hours: 24,
+        last_check: {
+          status: "current",
+          current_version: "v0.2.12",
+          latest_version: "v0.2.12",
+          checked_at: "2026-07-27T00:01:00.000Z",
+        },
+      },
+    }),
+    false,
+  );
+});
+
+test("agent-seed updater checks again after the configured interval or malformed state", async () => {
+  const updater = await importUpdater("expired-check-interval");
+  const now = new Date("2026-07-27T12:00:00.000Z");
+
+  assert.equal(
+    updater.shouldCheckForUpdates({
+      currentVersion: "v0.2.11",
+      now,
+      selfUpdate: {
+        check_interval_hours: 24,
+        last_check: {
+          status: "available",
+          current_version: "v0.2.11",
+          latest_version: "v0.2.12",
+          checked_at: "2026-07-26T11:59:00.000Z",
+        },
+      },
+    }),
+    true,
+  );
+  assert.equal(updater.shouldCheckForUpdates({
+    currentVersion: "v0.2.12",
+    now,
+    selfUpdate: { last_check: { status: "current", checked_at: "invalid" } },
+  }), true);
+});
+
+test("agent-seed updater invalidates cached state for another installed version", async () => {
+  const updater = await importUpdater("mismatched-cache-version");
+
+  assert.equal(updater.shouldCheckForUpdates({
+    currentVersion: "v0.2.13",
+    now: new Date("2026-07-27T12:00:00.000Z"),
+    selfUpdate: {
+      last_check: {
+        status: "current",
+        current_version: "v0.2.12",
+        latest_version: "v0.2.12",
+        checked_at: "2026-07-27T00:01:00.000Z",
+      },
+    },
+  }), true);
+});
+
+test("agent-seed updater dispatches a detached Windows completion notification", async () => {
+  const updater = await importUpdater("windows-notification");
+  const calls = [];
+  const runner = (command, args, options) => {
+    calls.push({ command, args, options });
+    return { unref() {} };
+  };
+
+  assert.equal(updater.notifyWindowsUpdateCompleted({ platform: "win32", version: "v0.2.12", runner }), true);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].command, "powershell.exe");
+  assert.equal(calls[0].options.detached, true);
+  assert.match(calls[0].args.at(-1), /v0\.2\.12/);
+  assert.equal(updater.notifyWindowsUpdateCompleted({ platform: "linux", runner }), false);
+  assert.equal(updater.notifyWindowsUpdateCompleted({ platform: "win32", runner: () => { throw new Error("disabled"); } }), false);
+});
+
 test("agent-seed updater opts into Node env proxy support when proxy variables are configured", async () => {
   const updater = await importUpdater("proxy");
   const reexec = updater.getEnvProxyReexecArgs({
@@ -416,13 +499,16 @@ test("agent-seed updater queues a locked Windows replacement and helper complete
     assert.equal(launches.length, 1);
     assert.equal(await readFile(path.join(queued.stagePath, "expanded", "VERSION.json"), "utf8"), '{"version":"v0.2.12"}\n');
 
+    const notifications = [];
     await updater.runDeferredUpdate({
       stagePath: queued.stagePath,
       sleep: async () => {},
+      notifier: (details) => notifications.push(details),
     });
 
     assert.equal(await readFile(path.join(targetDir, "VERSION.json"), "utf8"), '{"version":"v0.2.12"}\n');
     await assert.rejects(readFile(path.join(targetDir, "stale.txt"), "utf8"), /ENOENT/);
+    assert.deepEqual(notifications, [{ version: "v0.2.12" }]);
     const config = JSON.parse(await readFile(configPath, "utf8"));
     assert.equal(config.self_update.last_check.status, "updated");
   } finally {
