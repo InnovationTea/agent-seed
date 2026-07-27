@@ -36,6 +36,23 @@ The `worktree` entry whose path is `CURRENT_WORKTREE` is the only worktree in sc
 git branch --show-current
 ```
 
+## Protected Branch Guard
+
+Before inspecting, staging, committing, or pushing, stop when the current branch is one of:
+
+```text
+main
+master
+develop
+dev
+release
+staging
+production
+prod
+```
+
+Report `CURRENT_WORKTREE` and the protected branch, then direct the user to the intended linked worktree. Continue only when the user explicitly tells you to commit and push that protected branch by name. A plain `gitpush` request while checked out on a protected branch is not that confirmation. Squash mode does not bypass this guard.
+
 4. Inspect the worktree:
 
 ```bash
@@ -159,18 +176,7 @@ Never use `git push --force`.
 
 Run these steps only when squash mode is enabled.
 
-1. Stop immediately if the current branch is protected:
-
-```text
-main
-master
-develop
-dev
-release
-staging
-production
-prod
-```
+1. The Protected Branch Guard in the main workflow applies before squash preparation. Do not bypass it in squash mode.
 
 2. Verify and fetch remote refs. `origin` must point to the user's fork of the source repository, and `upstream` must point to the source repository. Stop with that guidance if either remote is missing:
 
@@ -234,7 +240,7 @@ After this, return to the main workflow at staged-change inspection. The final c
 
 ## Failure Rules
 
-- Stop on any failed precheck, failed fetch, missing required remote (`origin` or `upstream`), missing target branch, detached `HEAD`, protected branch squash, failed signed commit, or rejected push.
+- Stop on any failed precheck, protected branch guard, failed fetch, missing required remote (`origin` or `upstream`), missing target branch, detached `HEAD`, failed signed commit, or rejected push.
 - Preserve the relevant Git output in the final error.
 - If `git commit -S` fails because signing is unavailable or misconfigured, include the signing setup commands from the commit step in the failure guidance.
 - If `--force-with-lease` rejects the push, do not retry with `--force`.
