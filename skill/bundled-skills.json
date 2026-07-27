@@ -8,7 +8,7 @@
   "bundled_skills": [
     {
       "name": "gitpush",
-      "version": "local",
+      "version": "$AGENT_SEED_VERSION",
       "kind": "multi-platform-direct-skill",
       "source_path": "bundled-skills/gitpush/skill",
       "purpose": "Commit local Git changes and push them to the remote repository, with optional branch squash.",
@@ -70,7 +70,7 @@
     },
     {
       "name": "gittag",
-      "version": "local",
+      "version": "$AGENT_SEED_VERSION",
       "kind": "multi-platform-direct-skill",
       "source_path": "bundled-skills/gittag/skill",
       "purpose": "Create a Git tag after syncing the fork mainline, then push the exact tag to both origin and upstream.",
@@ -132,7 +132,7 @@
     },
     {
       "name": "gitsync",
-      "version": "local",
+      "version": "$AGENT_SEED_VERSION",
       "kind": "multi-platform-direct-skill",
       "source_path": "bundled-skills/gitsync/skill",
       "purpose": "Sync a fork's mainline branch from upstream to the local mainline and push it to origin without merge commits.",

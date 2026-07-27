@@ -67,6 +67,7 @@ test("releaseSkill packages bundled direct skills from the manifest", async () =
           bundled_skills: [
             {
               name: "alpha-tool",
+              version: "$AGENT_SEED_VERSION",
               source_path: "bundled-skills/alpha-tool/skill",
               platforms: [
                 {
@@ -145,6 +146,28 @@ test("releaseSkill writes package version metadata and a release manifest", asyn
       ),
     );
     assert.ok(manifest.assets.some((asset) => asset.name === "agent-seed-release.json" && /^[a-f0-9]{64}$/.test(asset.sha256)));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("releaseSkill materializes bundled direct-skill versions", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-release-bundled-version-"));
+
+  try {
+    const skillDir = path.join(rootDir, "skill");
+    await mkdir(path.join(skillDir, "bundled-skills", "alpha", "skill"), { recursive: true });
+    await writeFile(path.join(skillDir, "SKILL.md"), "---\nname: agent-seed\n---\n");
+    await writeFile(path.join(skillDir, "bundled-skills", "alpha", "skill", "SKILL.md"), "---\nname: alpha\n---\n");
+    await writeFile(
+      path.join(skillDir, "bundled-skills.json"),
+      `${JSON.stringify({ bundled_skills: [{ name: "alpha", version: "$AGENT_SEED_VERSION", source_path: "bundled-skills/alpha/skill", platforms: [] }] })}\n`,
+    );
+
+    const result = await releaseSkill({ rootDir, skillDir, outputDir: path.join(rootDir, "outputs"), version: "v2.3.4" });
+    const manifest = JSON.parse(await readFile(path.join(result.expandedDir, "bundled-skills.json"), "utf8"));
+
+    assert.equal(manifest.bundled_skills[0].version, "v2.3.4");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
