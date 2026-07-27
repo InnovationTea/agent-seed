@@ -2,6 +2,7 @@
 .claude
 outputs/
 .agents/agent-seed.json
+.agents/managed-skills.json
 .ai-tracking/pending-lines.json
 .ai-tracking/pending-commit.json
 .ai-tracking/tracking-message.txt

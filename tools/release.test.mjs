@@ -221,6 +221,11 @@ test("external packages config includes install metadata", async () => {
     declined_action: "record_reason_and_continue",
     previous_decline_suppresses_prompt: false,
   });
+  assert.deepEqual(config.activation_policy.update_policy, {
+    ownership: "platform-native",
+    version_check: "best-effort",
+    update_requires_user_approval: true,
+  });
 
   assert.ok(Array.isArray(config.recommended_external_plugins));
   assert.ok(config.recommended_external_plugins.length > 0);
@@ -256,6 +261,18 @@ test("external packages config includes install metadata", async () => {
       assert.notEqual(platform.verification.trim(), "");
     }
   }
+});
+
+test("Agent Seed documents a non-blocking managed update session preflight", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+
+  await stat(path.join(rootDir, "skill", "scripts", "manage-managed-skills.mjs"));
+  assert.match(skill, /Before executing the first user task in a new agent session/i);
+  assert.match(skill, /manage-managed-skills\.mjs check/i);
+  assert.match(skill, /must not block the requested task/i);
+  assert.match(outputAssets, /session preflight/i);
 });
 
 test("bundled install manifests require activation preflight handling", async () => {

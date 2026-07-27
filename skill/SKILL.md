@@ -71,6 +71,30 @@ This file may contain machine-specific proxy settings or local permission histor
 
 `install_prompt_history` is best-effort local audit history. On a declined recurring integration, append the activation time, platform, integration, decision, and owner-provided reason. Never interpret this history as an opt-out or skip marker. If the local state cannot be written, report that limitation and continue after capturing the reason in the current result.
 
+## Managed Skill Update Preflight
+
+Before executing the first user task in a new agent session, run the installed
+Agent Seed manager against the target project and active platform:
+
+```bash
+node scripts/manage-managed-skills.mjs check <target-project> --platform <platform> --json
+```
+
+This preflight reads `.agents/managed-skills.json` and the installed bundled
+manifests only. It must not create project files, calculate content hashes, or
+block the requested task. It must not block the requested task. Report `update-available`, `missing`, and
+`legacy-unmanaged` entries concisely, then continue the request. Run
+`manage-managed-skills.mjs apply` only after explicit owner approval; approved
+updates replace the managed target and record its new version. The normal
+Agent Seed self-update check remains governed by `check_interval_hours` and
+must never run `update-agent-seed.mjs --apply` automatically.
+
+Use `.agents/managed-skills.json` only for Agent Seed-managed bundled skills
+and packages. For `external-packages.json` integrations, record availability
+and ownership when useful, but use the platform-native update action after
+separate owner approval. Never copy, delete, or replace an external plugin
+directory.
+
 ## Activation Preflight
 
 Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
