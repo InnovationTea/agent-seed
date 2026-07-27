@@ -4,6 +4,11 @@
     "missing_action": "must_offer_before_onboarding",
     "requires_user_approval": true,
     "skip_reason_required": true,
+    "update_policy": {
+      "ownership": "platform-native",
+      "version_check": "best-effort",
+      "update_requires_user_approval": true
+    },
     "recurring_install_prompt": {
       "applies_to": [
         "opencli"

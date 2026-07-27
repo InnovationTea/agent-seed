@@ -17,6 +17,14 @@ Use this reference before generating new onboarding files.
 
 Always generate or update `AGENTS.md` unless the user explicitly asks for another file only.
 
+When Agent Seed manages bundled skills or packages for a project, add a short
+session preflight to `AGENTS.md`: before the first task in a new agent session,
+run `node <agent-seed-root>/scripts/manage-managed-skills.mjs check <project-root> --platform <platform> --json`. The command is read-only and non-blocking:
+report non-current entries, then continue the user's task. Only run its
+`apply` command after explicit owner approval. Do not add a recurring hash
+scan, automatic upgrade, or an external-plugin directory replacement to the
+generated session preflight.
+
 Generate `agents.d/` by default for knowledge distillation. Skip it only when the project is small and the owner explicitly wants everything in a concise `AGENTS.md`.
 
 Generate platform-specific files only for platforms the owner uses or explicitly requests, such as `CLAUDE.md`, `GEMINI.md`, `.cac/`, or `.opencode/`. If platforms are unknown, ask before generating platform-specific files.

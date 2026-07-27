@@ -136,6 +136,33 @@ node scripts/update-agent-seed.mjs --set-no-proxy localhost,127.0.0.1
 
 During Agent Seed activation, `/agent-seed` reads the installed `VERSION.json`, reads the target project's `.agents/agent-seed.json`, then runs `node scripts/update-agent-seed.mjs --json`. The default 24-hour cache avoids another network request after a successful `current` or `available` result; use `--force-check` for an immediate refresh. `self_update.update_mode` defaults to `notify`, while `manual` only reports state. Applying an update with `--apply` remains a separate approval. If the check cannot run, agents must report the update status as unknown rather than treating the skill as current.
 
+## Managed Skill Updates
+
+When Agent Seed installs a bundled direct skill or package into a project, it
+records the installed version and target path in
+`.agents/managed-skills.json`. The state file is local operator state and
+should stay ignored by Git. At the start of a new agent session, run a
+read-only status check for the project platform:
+
+```bash
+node scripts/manage-managed-skills.mjs check <target-project> --platform <platform> --json
+```
+
+The result reports `current`, `update-available`, `missing`, or
+`legacy-unmanaged`. It does not hash installed directories or change project
+files. After explicit owner approval, update one managed item with:
+
+```bash
+node scripts/manage-managed-skills.mjs apply <target-project> --name <managed-name> --platform <platform> --approved
+```
+
+Direct skills are staged and replaced with rollback on verification failure.
+Bundled packages use their existing installer with backups of their declared
+write roots. A legacy unrecorded installation is force-replaced only after the
+same approval, then becomes managed. External integrations remain owned by
+their platform; Agent Seed records their status and invokes only a
+platform-native update action after separate approval.
+
 ## Bundled Packages
 
 ### `git-code-tracker`
