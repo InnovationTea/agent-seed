@@ -38,8 +38,8 @@ Stop and report the required file and field when neither configuration file prov
 
 1. Identify the requested SR and AR ticket identifiers.
 2. Resolve the configured URL before opening a browser.
-3. Confirm that the OpenCLI skill is available. When it is missing, explain that browser retrieval depends on OpenCLI and request approval to follow the configured OpenCLI installation flow. Do not mark the ticket as read.
-4. Use OpenCLI to open the configured URL. Reuse an authenticated browser session when available; do not attempt to install a browser extension, configure a browser, or sign in on the user's behalf.
+3. Confirm that the configured browser-automation skill is available. When it is missing, explain that browser retrieval depends on the configured external integration and request approval to follow its installation flow. Do not mark the ticket as read.
+4. Use the configured browser-automation skill to open the configured URL. Reuse an authenticated browser session when available; do not attempt to install a browser extension, configure a browser, or sign in on the user's behalf.
 5. Search the visible site UI for each requested identifier and extract the content relevant to the user's question.
 6. Report found, not-found, inaccessible, and browser/session failures separately for each ticket.
 

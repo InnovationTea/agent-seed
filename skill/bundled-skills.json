@@ -204,6 +204,10 @@
         "requires_user_approval": true,
         "install_only_for_detected_or_requested_platforms": true
       },
+      "external_dependency": {
+        "registry_path": "external-packages.json",
+        "plugin": "opencli"
+      },
       "platforms": [
         {
           "platform": "codex",

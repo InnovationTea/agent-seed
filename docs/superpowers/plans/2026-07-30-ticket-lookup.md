@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Distribute a `ticket-lookup` skill that reads a configured requirements-management URL and uses OpenCLI for read-only SR/AR ticket retrieval.
+**Goal:** Distribute a `ticket-lookup` skill that reads a configured requirements-management URL and uses the configured browser-automation integration for read-only SR/AR ticket retrieval.
 
-**Architecture:** Deliver a platform-neutral direct skill with a Codex discovery overlay, then register it in the existing bundled-skill manifest. The skill owns request matching, URL-resolution precedence, OpenCLI prerequisite messaging, and the no-write safety boundary. Release tests enforce this delivery contract without accessing a real requirements system.
+**Architecture:** Deliver a platform-neutral direct skill with a Codex discovery overlay, then register it in the existing bundled-skill manifest. The manifest declares the external integration through `external-packages.json`; the bundled Markdown stays configuration driven. The skill owns request matching, URL-resolution precedence, prerequisite messaging, and the no-write safety boundary. Release tests enforce this delivery contract without accessing a real requirements system.
 
 **Tech Stack:** Markdown skills, JSON manifests, YAML Codex metadata, Node.js built-in `node:test`.
 
@@ -39,6 +39,10 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.equal(ticketLookup.default_install.install_only_for_detected_or_requested_platforms, true);
   assert.deepEqual(ticketLookup.platforms.map((platform) => platform.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
   assert.equal(ticketLookup.platforms.find((platform) => platform.platform === "codex").overlay_path, "bundled-skills/ticket-lookup/overlays/codex");
+  assert.deepEqual(ticketLookup.external_dependency, {
+    registry_path: "external-packages.json",
+    plugin: "opencli",
+  });
 
   const skill = await readFile(path.join(rootDir, "skill", ticketLookup.source_path, "SKILL.md"), "utf8");
   assert.match(skill, /SR/i);
@@ -46,7 +50,7 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.match(skill, /\.agents\/ticket-lookup\.local\.json/);
   assert.match(skill, /\.agents\/ticket-lookup\.json/);
   assert.match(skill, /requirement_management_url/);
-  assert.match(skill, /OpenCLI/i);
+  assert.match(skill, /configured browser-automation skill/i);
   assert.match(skill, /read-only/i);
   assert.match(skill, /\.gitignore/);
 
@@ -54,6 +58,7 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.match(codexPrompt, /ticket-lookup/i);
   assert.match(codexPrompt, /SR/i);
   assert.match(codexPrompt, /AR/i);
+  assert.doesNotMatch(codexPrompt, /OpenCLI/i);
 });
 ```
 
@@ -118,8 +123,8 @@ Stop and report the required file and field when neither configuration file prov
 
 1. Identify the requested SR and AR ticket identifiers.
 2. Resolve the configured URL before opening a browser.
-3. Confirm that the OpenCLI skill is available. When it is missing, explain that browser retrieval depends on OpenCLI and request approval to follow the configured OpenCLI installation flow. Do not mark the ticket as read.
-4. Use OpenCLI to open the configured URL. Reuse an authenticated browser session when available; do not attempt to install a browser extension, configure a browser, or sign in on the user's behalf.
+3. Confirm that the configured browser-automation skill is available. When it is missing, explain that browser retrieval depends on the configured external integration and request approval to follow its installation flow. Do not mark the ticket as read.
+4. Use the configured browser-automation skill to open the configured URL. Reuse an authenticated browser session when available; do not attempt to install a browser extension, configure a browser, or sign in on the user's behalf.
 5. Search the visible site UI for each requested identifier and extract the content relevant to the user's question.
 6. Report found, not-found, inaccessible, and browser/session failures separately for each ticket.
 
@@ -133,7 +138,7 @@ Only perform read-only browser actions. Do not create, edit, comment on, transit
 ```yaml
 interface:
   display_name: "Ticket Lookup"
-  short_description: "Retrieve configured SR and AR ticket content through OpenCLI."
+  short_description: "Retrieve configured SR and AR ticket content through browser automation."
   default_prompt: "Use $ticket-lookup to view SR or AR ticket content from the configured requirements-management site."
 ```
 
@@ -168,6 +173,10 @@ Expected: the commit contains the portable workflow and Codex overlay only.
     "offer_by_default": true,
     "requires_user_approval": true,
     "install_only_for_detected_or_requested_platforms": true
+  },
+  "external_dependency": {
+    "registry_path": "external-packages.json",
+    "plugin": "opencli"
   },
   "platforms": [
     { "platform": "codex", "target_path": "skills/ticket-lookup", "overlay_path": "bundled-skills/ticket-lookup/overlays/codex", "detection_paths": [".codex", "skills"], "verification": "SKILL.md exists at skills/ticket-lookup/SKILL.md" },
