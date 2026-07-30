@@ -1,0 +1,4 @@
+interface:
+  display_name: "Ticket Lookup"
+  short_description: "Retrieve configured SR and AR ticket content through OpenCLI."
+  default_prompt: "Use $ticket-lookup to view SR or AR ticket content from the configured requirements-management site."
