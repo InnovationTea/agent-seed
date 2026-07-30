@@ -316,6 +316,37 @@ test("bundled direct skill manifest registers every bundled skill directory", as
   }
 });
 
+test("ticket-lookup bundled skill defines configurable read-only SR and AR retrieval", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
+  const ticketLookup = config.bundled_skills.find((skill) => skill.name === "ticket-lookup");
+
+  assert.ok(ticketLookup, "expected ticket-lookup bundled skill");
+  assert.equal(ticketLookup.kind, "multi-platform-direct-skill");
+  assert.equal(ticketLookup.source_path, "bundled-skills/ticket-lookup/skill");
+  assert.equal(ticketLookup.default_install.mode, "project-local");
+  assert.equal(ticketLookup.default_install.offer_by_default, true);
+  assert.equal(ticketLookup.default_install.requires_user_approval, true);
+  assert.equal(ticketLookup.default_install.install_only_for_detected_or_requested_platforms, true);
+  assert.deepEqual(ticketLookup.platforms.map((platform) => platform.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
+  assert.equal(ticketLookup.platforms.find((platform) => platform.platform === "codex").overlay_path, "bundled-skills/ticket-lookup/overlays/codex");
+
+  const skill = await readFile(path.join(rootDir, "skill", ticketLookup.source_path, "SKILL.md"), "utf8");
+  assert.match(skill, /SR/i);
+  assert.match(skill, /AR/i);
+  assert.match(skill, /\.agents\/ticket-lookup\.local\.json/);
+  assert.match(skill, /\.agents\/ticket-lookup\.json/);
+  assert.match(skill, /requirement_management_url/);
+  assert.match(skill, /OpenCLI/i);
+  assert.match(skill, /read-only/i);
+  assert.match(skill, /\.gitignore/);
+
+  const codexPrompt = await readFile(path.join(rootDir, "skill", "bundled-skills", "ticket-lookup", "overlays", "codex", "agents", "openai.yaml"), "utf8");
+  assert.match(codexPrompt, /ticket-lookup/i);
+  assert.match(codexPrompt, /SR/i);
+  assert.match(codexPrompt, /AR/i);
+});
+
 test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {
   const rootDir = process.cwd();
   const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
