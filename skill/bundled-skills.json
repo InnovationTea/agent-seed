@@ -191,6 +191,68 @@
         "personal_directory_install_requires_explicit_request": true,
         "existing_target_requires_user_decision": true
       }
+    },
+    {
+      "name": "ticket-lookup",
+      "version": "$AGENT_SEED_VERSION",
+      "kind": "multi-platform-direct-skill",
+      "source_path": "bundled-skills/ticket-lookup/skill",
+      "purpose": "Retrieve SR and AR ticket content from a project-configured requirements-management site through OpenCLI.",
+      "default_install": {
+        "mode": "project-local",
+        "offer_by_default": true,
+        "requires_user_approval": true,
+        "install_only_for_detected_or_requested_platforms": true
+      },
+      "platforms": [
+        {
+          "platform": "codex",
+          "target_path": "skills/ticket-lookup",
+          "overlay_path": "bundled-skills/ticket-lookup/overlays/codex",
+          "detection_paths": [
+            ".codex",
+            "skills"
+          ],
+          "verification": "SKILL.md exists at skills/ticket-lookup/SKILL.md"
+        },
+        {
+          "platform": "claude",
+          "target_path": ".claude/skills/ticket-lookup",
+          "detection_paths": [
+            ".claude",
+            "CLAUDE.md"
+          ],
+          "verification": "SKILL.md exists at .claude/skills/ticket-lookup/SKILL.md"
+        },
+        {
+          "platform": "codeagent-cli",
+          "target_path": ".cac/skills/ticket-lookup",
+          "detection_paths": [
+            ".cac"
+          ],
+          "verification": "SKILL.md exists at .cac/skills/ticket-lookup/SKILL.md"
+        },
+        {
+          "platform": "opencode",
+          "target_path": ".opencode/skills/ticket-lookup",
+          "detection_paths": [
+            ".opencode",
+            "opencode.json",
+            ".opencode.yaml"
+          ],
+          "verification": "SKILL.md exists at .opencode/skills/ticket-lookup/SKILL.md"
+        }
+      ],
+      "writes": [
+        "skills/ticket-lookup",
+        ".claude/skills/ticket-lookup",
+        ".cac/skills/ticket-lookup",
+        ".opencode/skills/ticket-lookup"
+      ],
+      "safety": {
+        "personal_directory_install_requires_explicit_request": true,
+        "existing_target_requires_user_decision": true
+      }
     }
   ]
 }
