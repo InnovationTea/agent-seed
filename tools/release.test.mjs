@@ -343,12 +343,28 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.match(skill, /requirement_management_url/);
   assert.match(skill, /allow_prefilled_login_submit/);
   assert.match(skill, /"allow_prefilled_login_submit"\s*:\s*true/);
+  assert.match(skill, /\.agents\/sitemaps\/<host>\//);
+  assert.match(skill, /\.agents\/ticket-lookup\/sites\/<host>\.md/);
+  assert.match(skill, /Observed/);
+  assert.match(skill, /Verified/);
+  assert.match(skill, /Inferred/);
+  assert.match(skill, /After each successful lookup/i);
+  assert.match(skill, /ticket content|ticket body/i);
   assert.match(skill, /without reading or filling/i);
   assert.match(skill, /click.*once/i);
   assert.match(skill, /MFA|验证码|captcha/i);
   assert.match(skill, /configured browser-automation skill/i);
   assert.match(skill, /read-only/i);
   assert.match(skill, /\.gitignore/);
+
+  const siteKnowledgeTemplate = await readFile(
+    path.join(rootDir, "skill", ticketLookup.source_path, "references", "site-knowledge-template.md"),
+    "utf8",
+  );
+  assert.match(siteKnowledgeTemplate, /Direct Paths/);
+  assert.match(siteKnowledgeTemplate, /Observed/);
+  assert.match(siteKnowledgeTemplate, /Verified/);
+  assert.match(siteKnowledgeTemplate, /Inferred/);
 
   const codexPrompt = await readFile(path.join(rootDir, "skill", "bundled-skills", "ticket-lookup", "overlays", "codex", "agents", "openai.yaml"), "utf8");
   assert.match(codexPrompt, /ticket-lookup/i);
@@ -371,6 +387,7 @@ test("Agent Seed documents controlled knowledge-only session updates and project
   assert.match(readme, /managed-skills\.json/);
   assert.match(readme, /ticket-lookup\.json/);
   assert.match(readme, /ticket-lookup\.local\.json/);
+  assert.match(readme, /ticket-lookup\/sites/);
   assert.match(readme, /AGENTS\.md/);
   assert.match(readme, /agents\.d/);
   assert.match(readme, /shared|committed/i);

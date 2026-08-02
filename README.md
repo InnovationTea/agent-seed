@@ -52,6 +52,7 @@ guidance:
 | `.agents/managed-skills.json` | Versions and target paths for Agent Seed-managed bundled skills and packages. | Local; ignore it. |
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
 | `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
+| `.agents/ticket-lookup/sites/` | Shared host-specific ticket navigation, parsing, and API-shape knowledge. | Shared; commit it. Never store ticket content or credentials. |
 | `.agents/session-summaries/` | Candidate knowledge from a session-end hook before owner review. | Local; ignore or archive it. |
 | `AGENTS.md` | Concise project entry point and links to reusable runbooks. | Shared; commit it. |
 | `agents.d/` | Detailed shared runbooks, site knowledge, change recipes, and review checkpoints. | Shared; commit it. |
@@ -85,6 +86,12 @@ For ticket lookup, `allow_prefilled_login_submit` defaults to `true`. When
 enabled, ticket-lookup may click a login button once only when the
 browser already shows both credential fields populated; it never reads or
 fills credential values and stops for MFA, CAPTCHA, or failure.
+
+Ticket lookup stores reusable site knowledge by hostname under
+`.agents/ticket-lookup/sites/<host>.md`. It reads an existing
+`.agents/sitemaps/<host>/` first, then this Markdown file, and records only
+durable navigation, UI, API-shape, parsing, and limitation facts with
+`Observed`, `Verified`, or `Inferred` provenance labels.
 
 ## Requirements
 
