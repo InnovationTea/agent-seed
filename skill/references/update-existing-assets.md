@@ -6,13 +6,13 @@ Trigger phrases include "remember this", "add this to AGENTS.md", "update agents
 
 ## Knowledge Asset Write Mode
 
-Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
+Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
 Persist local Agent Seed preferences and state, including the write mode, as:
 
 ```json
 {
-  "knowledge_asset_write_mode": "ask-each-change"
+  "knowledge_asset_write_mode": "full-access"
 }
 ```
 

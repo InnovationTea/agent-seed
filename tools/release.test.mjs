@@ -341,6 +341,11 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.match(skill, /\.agents\/ticket-lookup\.local\.json/);
   assert.match(skill, /\.agents\/ticket-lookup\.json/);
   assert.match(skill, /requirement_management_url/);
+  assert.match(skill, /allow_prefilled_login_submit/);
+  assert.match(skill, /"allow_prefilled_login_submit"\s*:\s*true/);
+  assert.match(skill, /without reading or filling/i);
+  assert.match(skill, /click.*once/i);
+  assert.match(skill, /MFA|验证码|captcha/i);
   assert.match(skill, /configured browser-automation skill/i);
   assert.match(skill, /read-only/i);
   assert.match(skill, /\.gitignore/);
@@ -350,6 +355,50 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.match(codexPrompt, /SR/i);
   assert.match(codexPrompt, /AR/i);
   assert.doesNotMatch(codexPrompt, /OpenCLI/i);
+});
+
+test("Agent Seed documents controlled knowledge-only session updates and project configuration boundaries", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+
+  assert.match(skill, /knowledge-only/i);
+  assert.match(skill, /"session_end_knowledge_update"\s*:\s*true/);
+  assert.match(skill, /AGENTS\.md/);
+  assert.match(skill, /session[- ]summaries/i);
+  assert.match(skill, /must not change source code/i);
+  assert.match(readme, /agent-seed\.json/);
+  assert.match(readme, /managed-skills\.json/);
+  assert.match(readme, /ticket-lookup\.json/);
+  assert.match(readme, /ticket-lookup\.local\.json/);
+  assert.match(readme, /AGENTS\.md/);
+  assert.match(readme, /agents\.d/);
+  assert.match(readme, /shared|committed/i);
+  assert.match(readme, /local|ignored/i);
+});
+
+test("Agent Seed ships Claude-compatible session-end hook guidance", async () => {
+  const rootDir = process.cwd();
+  const scriptPath = path.join(rootDir, "skill", "scripts", "session-end-knowledge-update.mjs");
+  const hookReferencePath = path.join(rootDir, "skill", "references", "session-end-hooks.md");
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const hookReference = await readFile(hookReferencePath, "utf8");
+
+  await stat(scriptPath);
+  assert.match(skill, /Claude Code/i);
+  assert.match(skill, /codeagent-cli/i);
+  assert.match(skill, /session-end-hooks\.md/);
+  assert.match(hookReference, /\.claude\/settings\.json/);
+  assert.match(hookReference, /\.cac\/settings\.json/);
+  assert.match(hookReference, /SessionEnd/);
+  assert.match(hookReference, /session-end-knowledge-update\.mjs/);
+  assert.match(hookReference, /AGENT_SEED_SESSION_END_CHILD/);
+  assert.match(hookReference, /full-access/i);
+  const jsonBlocks = [...hookReference.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => match[1]);
+  assert.equal(jsonBlocks.length, 3);
+  for (const block of jsonBlocks) {
+    assert.doesNotThrow(() => JSON.parse(block));
+  }
 });
 
 test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {
@@ -696,7 +745,7 @@ test("knowledge asset write mode is persistent and documented across write workf
   }
 
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
-  assert.match(skill, /default to `ask-each-change`/i);
+  assert.match(skill, /default to `full-access`/i);
   assert.match(skill, /current user request wins/i);
 });
 
@@ -704,6 +753,9 @@ test("local Agent Seed config is ignored by Git", async () => {
   const gitignore = await readFile(path.join(process.cwd(), ".gitignore"), "utf8");
 
   assert.match(gitignore, /^\.agents\/agent-seed\.json$/m);
+  assert.match(gitignore, /^\.agents\/managed-skills\.json$/m);
+  assert.match(gitignore, /^\.agents\/ticket-lookup\.local\.json$/m);
+  assert.match(gitignore, /^\.agents\/session-summaries\/$/m);
 });
 
 test("external plugin prose stays configuration driven", async () => {

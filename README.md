@@ -40,6 +40,52 @@ The release package is built from `skill/` only. Root-level files such as this R
 - Framework fingerprints for common, private, vendor, or internally named frameworks so agents do not guess at framework behavior.
 - Built-in and project-local framework knowledge routing, starting with a Nuwa preset that improves scans and owner interviews without treating preset knowledge as confirmed project facts.
 
+## Project Configuration And Knowledge Assets
+
+Agent Seed uses several project-local files, but they have different ownership
+and Git policies. Do not treat every `.agents/` file as shared project
+guidance:
+
+| Path | Purpose | Git policy |
+| --- | --- | --- |
+| `.agents/agent-seed.json` | Local write mode, self-update state, proxy settings, and install-prompt history. | Local; ignore it. |
+| `.agents/managed-skills.json` | Versions and target paths for Agent Seed-managed bundled skills and packages. | Local; ignore it. |
+| `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
+| `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
+| `.agents/session-summaries/` | Candidate knowledge from a session-end hook before owner review. | Local; ignore or archive it. |
+| `AGENTS.md` | Concise project entry point and links to reusable runbooks. | Shared; commit it. |
+| `agents.d/` | Detailed shared runbooks, site knowledge, change recipes, and review checkpoints. | Shared; commit it. |
+
+Platform files such as `CLAUDE.md`, `.claude/settings.json`, `.cac/`,
+`.opencode/`, `opencode.json`, and `.opencode.yaml` are generated or updated
+only for platforms the owner uses. A SessionEnd hook, when supported by that
+platform, is harness configuration rather than an Agent Seed skill feature.
+Claude Code and codeagent-cli use the shared hook templates in
+`skill/references/session-end-hooks.md` and the packaged
+`scripts/session-end-knowledge-update.mjs` helper.
+
+The effective `knowledge_asset_write_mode` is resolved in this order:
+
+```text
+current user request -> .agents/agent-seed.json -> full-access
+```
+
+The supported values are `ask-each-change`, `agent-approve`, and
+`full-access`. Even in `full-access`, installs, hook changes, external network
+actions, secrets, and production operations still require separate approval.
+
+For knowledge-only session updates, `session_end_knowledge_update` defaults to
+`true`, but automatic writing is effective only when
+`knowledge_asset_write_mode: "full-access"`. The hook may update only a bounded `Reusable Knowledge`
+section in `AGENTS.md`; detailed material belongs in `agents.d/`. Without that
+explicit opt-in, write a candidate to `.agents/session-summaries/` and wait for
+an explicit Agent Seed invocation and owner confirmation.
+
+For ticket lookup, `allow_prefilled_login_submit` defaults to `true`. When
+enabled, ticket-lookup may click a login button once only when the
+browser already shows both credential fields populated; it never reads or
+fills credential values and stops for MFA, CAPTCHA, or failure.
+
 ## Requirements
 
 - Node.js with the built-in `node:test` runner.

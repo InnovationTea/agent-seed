@@ -41,7 +41,7 @@ Use `.agents/agent-seed.json` as the unified local Agent Seed config and state f
 
 ```json
 {
-  "knowledge_asset_write_mode": "ask-each-change",
+  "knowledge_asset_write_mode": "full-access",
   "self_update": {
     "check_on_start": true,
     "check_interval_hours": 24,
@@ -95,6 +95,40 @@ and ownership when useful, but use the platform-native update action after
 separate owner approval. Never copy, delete, or replace an external plugin
 directory.
 
+## Knowledge-Only Session Updates
+
+Agent Seed is normally triggered explicitly. It does not run a model at every
+session end. `session_end_knowledge_update` defaults to `true`, but automatic
+writing is effective only when the write mode is `full-access` and a
+platform-specific session hook is available. The target project's
+`.agents/agent-seed.json` may make that policy explicit:
+
+```json
+{
+  "session_end_knowledge_update": true,
+  "knowledge_asset_write_mode": "full-access"
+}
+```
+
+When enabled, the hook may update only a bounded `Reusable Knowledge` section
+in `AGENTS.md`. The update must contain durable, project-reusable rules and
+must not change source code, tests, dependencies, hooks, platform settings, or
+external integrations. It must never copy credentials, personal data,
+one-off incident chatter, or temporary debugging details. Detailed knowledge
+belongs in focused `agents.d/` runbooks, with `AGENTS.md` acting as the concise
+entry point.
+
+If the platform cannot provide a reliable session-end hook or the write mode is
+not `full-access`, generate a candidate under `.agents/session-summaries/` and
+wait for an explicit Agent Seed invocation and owner confirmation before
+updating `AGENTS.md` or `agents.d/`. Session-end hooks remain platform and
+harness configuration; Agent Seed must not install or modify them implicitly.
+
+For Claude Code and codeagent-cli (cac), use the shared configuration and
+script templates in `references/session-end-hooks.md`. The two platforms use
+the same hook schema; only the settings directory and CLI platform argument
+differ.
+
 ## Activation Preflight
 
 Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
@@ -107,11 +141,11 @@ Persist the target project's local Agent Seed preferences and state in `.agents/
 
 ```json
 {
-  "knowledge_asset_write_mode": "ask-each-change"
+  "knowledge_asset_write_mode": "full-access"
 }
 ```
 
-Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over the project config, then `.agents/agent-seed.json`, then default to `ask-each-change`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, and generated project skill guidance. If the config file is missing during onboarding, ask whether to create it with the selected mode.
+Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over the project config, then `.agents/agent-seed.json`, then default to `full-access`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, and generated project skill guidance. If the config file is missing during onboarding, use `full-access` unless the user selects another mode.
 
 Treat external agent workflow suites listed in `external-packages.json` as recommended platform plugins, not bundled packages, unless the user explicitly asks to vendor them. If a configured plugin applies to the owner's platform and is not visible in the current agent environment or project platform config, recommend installing it through the platform's normal network-backed plugin flow instead of copying its internals into the project.
 
@@ -153,6 +187,7 @@ Read only the reference file needed for the current phase:
 - For uncommon, private, vendor, internally named, or preset-supported frameworks, or when the user mentions a framework the model may not know well, read `references/framework-fingerprints.md`. If `framework-knowledge.json` contains a matching framework entry or the target project provides project-local framework knowledge, load only the matching framework knowledge files before interviewing the owner.
 - For `AGENTS.md`, `agents.d/`, `CLAUDE.md`, project-specific skill structures, resource directories, bundled direct skills, bundled packages, platform skills, and default project-local installation, read `references/output-assets.md` before generating files.
 - When the user adds knowledge after initial onboarding or asks to update existing instructions, read `references/update-existing-assets.md`.
+- When configuring Claude Code or codeagent-cli session-end knowledge updates, read `references/session-end-hooks.md`.
 - Before claiming the project is agent-ready or automation-ready, read `references/fresh-agent-dry-run.md`.
 
 Do not duplicate reference content in generated files. Put the concise entry point in `AGENTS.md` and route detailed runbooks into focused `agents.d/` files.
