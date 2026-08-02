@@ -35,15 +35,30 @@ The local file replaces the shared file's `requirement_management_url`. `allow_p
 
 Stop and report the required file and field when neither configuration file provides an absolute `http://` or `https://` `requirement_management_url`.
 
+## Site Knowledge
+
+Parse the configured URL with a URL parser and normalize its hostname to lowercase as `<host>`. Before browsing, read site knowledge in this order when the paths exist:
+
+1. `.agents/sitemaps/<host>/`
+2. `.agents/ticket-lookup/sites/<host>.md`
+
+The sitemap is an optional externally maintained navigation asset. The Markdown file is shared project knowledge and may be committed; create it from `references/site-knowledge-template.md` when needed. Keep hosts isolated: never use one site's paths, selectors, APIs, or limitations for another host.
+
+Apply the resolved project `knowledge_asset_write_mode` when it is available; otherwise default to `full-access`. With `full-access`, update the site file after a successful lookup. With `agent-approve`, update it after the owner has confirmed the lookup scope. With `ask-each-change`, ask before creating or editing it.
+
+Record only durable navigation paths, UI behavior, API shapes, parsing requirements, and reproducible limitations. Prefix every entry with `Observed`, `Verified`, or `Inferred`. Do not record ticket content, ticket body text, credentials, cookies, tokens, personal account data, or one-off incident details.
+
 ## Lookup Workflow
 
 1. Identify the requested SR and AR ticket identifiers.
 2. Resolve the configured URL before opening a browser.
-3. Confirm that the configured browser-automation skill is available. When it is missing, explain that browser retrieval depends on the configured external integration and request approval to follow its installation flow. Do not mark the ticket as read.
-4. Use the configured browser-automation skill to open the configured URL. Reuse an authenticated browser session when available. Do not install an extension, configure the browser, or type credentials.
-5. If the site shows a login page and `allow_prefilled_login_submit` is `true` (the default), and the browser visibly shows the username and password fields already populated, click the site's login button once without reading or filling either value. If the option is `false`, stop and ask the user to log in. Do not retry. Hand MFA, CAPTCHA, consent, or any unexpected page to the user.
-6. Search the visible site UI for each requested identifier and extract the content relevant to the user's question.
-7. Report found, not-found, inaccessible, and browser/session failures separately for each ticket.
+3. Parse the configured URL, derive `<host>`, and read its sitemap and site knowledge file before exploring the UI.
+4. Confirm that the configured browser-automation skill is available. When it is missing, explain that browser retrieval depends on the configured external integration and request approval to follow its installation flow. Do not mark the ticket as read.
+5. Use the configured browser-automation skill to open the configured URL. Reuse an authenticated browser session when available. Do not install an extension, configure the browser, or type credentials.
+6. If the site shows a login page and `allow_prefilled_login_submit` is `true` (the default), and the browser visibly shows the username and password fields already populated, click the site's login button once without reading or filling either value. If the option is `false`, stop and ask the user to log in. Do not retry. Hand MFA, CAPTCHA, consent, or any unexpected page to the user.
+7. Search the visible site UI for each requested identifier and extract the content relevant to the user's question.
+8. After each successful lookup, add only newly learned reusable site knowledge to `.agents/ticket-lookup/sites/<host>.md` using the resolved write mode and provenance labels. Do not duplicate existing entries.
+9. Report found, not-found, inaccessible, and browser/session failures separately for each ticket.
 
 ## Safety
 
