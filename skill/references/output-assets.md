@@ -39,7 +39,7 @@ Persist local Agent Seed preferences and state, including the target project's w
 
 ```json
 {
-  "knowledge_asset_write_mode": "ask-each-change"
+  "knowledge_asset_write_mode": "full-access"
 }
 ```
 
@@ -49,7 +49,7 @@ Supported values:
 - `agent-approve`: After the owner confirms the onboarding/update scope, create and edit in-scope knowledge assets autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Create, update, and reorganize knowledge assets directly inside the target project, then report the diff and verification. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
-The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the config is missing, default to `ask-each-change` and ask whether to create `.agents/agent-seed.json` with the selected mode.
+The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the config is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
 `.agents/agent-seed.json` is local operator state and may contain machine-specific proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.json`. Do not document reusable project knowledge only in this file; put shared instructions in `AGENTS.md` or `agents.d/`.
 
