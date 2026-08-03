@@ -180,6 +180,26 @@ export async function recordExternalIntegration({ targetDir, name, platform, own
   return writeManagedState(targetDir, { ...state, external_integrations: [...retained, record] });
 }
 
+export async function recordInstallOfferDecline({ skillRoot, targetDir, name, platform, confirmed, now = new Date() }) {
+  if (confirmed !== true) throw new Error("An explicit owner decline is required.");
+  const entry = (await readManagedEntries(skillRoot, platform)).find((candidate) => candidate.name === name);
+  if (!entry || !entry.offer_by_default) throw new Error(`Unknown default install offer for ${platform}: ${name}`);
+
+  const state = await readManagedState(targetDir);
+  const decline = {
+    name: entry.name,
+    kind: entry.kind,
+    platform,
+    offered_version: entry.version,
+    declined_at: now.toISOString(),
+  };
+  const retained = state.declined_install_offers.filter((candidate) =>
+    candidate.name !== entry.name || candidate.kind !== entry.kind || candidate.platform !== platform
+  );
+  await writeManagedState(targetDir, { ...state, declined_install_offers: [...retained, decline] });
+  return decline;
+}
+
 export async function applyExternalUpdate({ approved, nativeUpdate }) {
   if (approved !== true) throw new Error("Owner approval is required to update an external integration.");
   if (typeof nativeUpdate !== "function") throw new Error("A platform-native update action is required.");
@@ -260,7 +280,14 @@ function normalizeRelativePath(value) {
 async function recordManagedInstall(targetDir, record) {
   const state = await readManagedState(targetDir);
   const retained = state.managed_skills.filter((entry) => entry.name !== record.name || entry.platform !== record.platform);
-  return writeManagedState(targetDir, { ...state, managed_skills: [...retained, record] });
+  const retainedDeclines = state.declined_install_offers.filter((entry) =>
+    entry.name !== record.name || entry.kind !== record.kind || entry.platform !== record.platform
+  );
+  return writeManagedState(targetDir, {
+    ...state,
+    managed_skills: [...retained, record],
+    declined_install_offers: retainedDeclines,
+  });
 }
 
 function normalizeState(state, statePath) {
@@ -307,14 +334,15 @@ function resolveInside(rootDir, relativePath, label) {
 
 function parseArgs(args) {
   const [command, targetDir, ...rest] = args;
-  if (!command || !targetDir || !["check", "apply"].includes(command)) {
-    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply> <target-project> --platform <platform> [--name <name>] [--approved] [--json]");
+  if (!command || !targetDir || !["check", "apply", "decline"].includes(command)) {
+    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply|decline> <target-project> --platform <platform> [--name <name>] [--approved] [--confirmed] [--json]");
   }
 
-  const options = { command, targetDir, platform: "", name: "", approved: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
+  const options = { command, targetDir, platform: "", name: "", approved: false, confirmed: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--approved") options.approved = true;
+    else if (arg === "--confirmed") options.confirmed = true;
     else if (arg === "--json") options.json = true;
     else if (["--platform", "--name", "--skill-root"].includes(arg)) {
       const value = rest[index += 1];
@@ -325,8 +353,9 @@ function parseArgs(args) {
     } else throw new Error(`Unexpected argument: ${arg}`);
   }
   if (!options.platform) throw new Error("--platform is required");
-  if (command === "apply" && !options.name) throw new Error("--name is required for apply");
+  if (["apply", "decline"].includes(command) && !options.name) throw new Error(`--name is required for ${command}`);
   if (command === "apply" && !options.approved) throw new Error("--approved is required for apply");
+  if (command === "decline" && !options.confirmed) throw new Error("--confirmed is required for decline");
   return options;
 }
 
@@ -334,7 +363,9 @@ async function runCli(args) {
   const options = parseArgs(args);
   const result = options.command === "check"
     ? await inspectManagedUpdates(options)
-    : await applyManagedUpdate(options);
+    : options.command === "apply"
+      ? await applyManagedUpdate(options)
+      : await recordInstallOfferDecline(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (options.command === "check") console.log(result.managed.map((entry) => `${entry.name}: ${entry.state}`).join("\n"));
 }
