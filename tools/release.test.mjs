@@ -433,6 +433,11 @@ test("agent-seed-updater bundled skill defines a bounded conversation preflight"
     updater.platforms.find((entry) => entry.platform === "codex").overlay_path,
     "bundled-skills/agent-seed-updater/overlays/codex",
   );
+  assert.deepEqual(updater.post_install, {
+    action: "ensure-agent-seed-updater-startup-rule",
+    requires_user_approval: true,
+    instruction_files: ["AGENTS.md", "CLAUDE.md"],
+  });
 
   const skill = await readFile(path.join(rootDir, "skill", updater.source_path, "SKILL.md"), "utf8");
   assert.match(skill, /once.*before the first user task/is);
@@ -445,6 +450,9 @@ test("agent-seed-updater bundled skill defines a bounded conversation preflight"
   assert.match(skill, /do not invoke Agent Seed onboarding/i);
   assert.match(skill, /do not update knowledge assets/i);
   assert.match(skill, /must not block the user.*task/is);
+  assert.match(skill, /first run.*AGENTS\.md/is);
+  assert.match(skill, /old direct.*manage-managed-skills\.mjs.*preflight/is);
+  assert.match(skill, /post_install.*ensure-agent-seed-updater-startup-rule/is);
 
   const codexPrompt = await readFile(
     path.join(rootDir, "skill", "bundled-skills", "agent-seed-updater", "overlays", "codex", "agents", "openai.yaml"),

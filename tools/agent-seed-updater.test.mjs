@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
@@ -42,6 +42,49 @@ test("preflight continues managed inspection when self-update check fails", asyn
   assert.equal(managedCalled, true);
   assert.equal(result.agent_seed.state, "unknown");
   assert.deepEqual(result.errors, [{ source: "agent-seed", message: "network unavailable" }]);
+});
+
+test("preflight honors the persistent self-update opt-out and still inspects managed skills", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-preflight-disabled-"));
+  let selfUpdateCalled = false;
+  let managedCalled = false;
+
+  try {
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(
+      path.join(targetDir, ".agents", "agent-seed.json"),
+      `${JSON.stringify({ self_update: { check_on_start: false } })}\n`,
+    );
+    const result = await runAgentSeedPreflight({
+      skillRoot: "C:/agent-seed",
+      targetDir,
+      platform: "codex",
+      runSelfUpdate: async () => { selfUpdateCalled = true; return {}; },
+      inspectManaged: async () => { managedCalled = true; return { managed: [], external: [] }; },
+    });
+
+    assert.equal(selfUpdateCalled, false);
+    assert.equal(managedCalled, true);
+    assert.deepEqual(result.agent_seed, { state: "skipped", reason: "check-on-start-disabled" });
+    assert.deepEqual(result.errors, []);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("preflight honors a one-conversation self-update skip", async () => {
+  let selfUpdateCalled = false;
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    skipSelfUpdate: true,
+    runSelfUpdate: async () => { selfUpdateCalled = true; return {}; },
+    inspectManaged: async () => ({ managed: [], external: [] }),
+  });
+
+  assert.equal(selfUpdateCalled, false);
+  assert.deepEqual(result.agent_seed, { state: "skipped", reason: "conversation-skip" });
 });
 
 test("preflight returns managed errors without failing the caller", async () => {
@@ -93,6 +136,24 @@ test("preflight CLI preserves managed results when self-update exits nonzero", a
   }
 });
 
+test("preflight CLI skip flag avoids self-update while preserving managed results", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-preflight-cli-skip-"));
+  const skillRoot = path.join(rootDir, "agent-seed");
+  const targetDir = path.join(rootDir, "project");
+  const markerPath = path.join(rootDir, "self-update-called.txt");
+
+  try {
+    await writeFixture({ skillRoot, targetDir, selfUpdater: `require("node:fs").writeFileSync(${JSON.stringify(markerPath)}, "called");\n` });
+    const report = await runCli({ skillRoot, targetDir, extraArgs: ["--skip-self-update"] });
+
+    assert.equal(report.agent_seed.state, "skipped");
+    assert.equal(report.managed[0].state, "install-available");
+    await assert.rejects(readFile(markerPath), { code: "ENOENT" });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 async function writeFixture({ skillRoot, targetDir, selfUpdater }) {
   await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
   await mkdir(targetDir, { recursive: true });
@@ -109,7 +170,7 @@ async function writeFixture({ skillRoot, targetDir, selfUpdater }) {
   await writeFile(path.join(skillRoot, "bundled-packages.json"), '{"bundled_packages":[]}\n');
 }
 
-async function runCli({ skillRoot, targetDir }) {
+async function runCli({ skillRoot, targetDir, extraArgs = [] }) {
   const script = path.join(process.cwd(), "skill", "scripts", "check-agent-seed-updates.mjs");
   const { stdout } = await execFileAsync(process.execPath, [
     script,
@@ -118,6 +179,7 @@ async function runCli({ skillRoot, targetDir }) {
     "codex",
     "--skill-root",
     skillRoot,
+    ...extraArgs,
     "--json",
   ]);
   return JSON.parse(stdout);

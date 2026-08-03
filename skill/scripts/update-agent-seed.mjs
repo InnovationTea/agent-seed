@@ -142,7 +142,10 @@ async function main(argv = process.argv.slice(2)) {
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const defaultTargetDir = path.resolve(scriptDir, "..");
   const targetDir = path.resolve(options.target || defaultTargetDir);
-  await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
+  const isPackagedInstallation = await validateAgentSeedInstallationRoot(targetDir);
+  if (isPackagedInstallation) {
+    await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
+  }
   const agentSeedConfig = await readAgentSeedConfig(configPath);
   let env = await buildProxyEnvironmentWithSystemProxy({ env: process.env, config: agentSeedConfig });
 
@@ -303,6 +306,33 @@ export async function writeAgentSeedInstallationState({ configPath = DEFAULT_CON
       recorded_at: now.toISOString(),
     },
   });
+}
+
+async function validateAgentSeedInstallationRoot(skillRoot) {
+  const requiredFiles = [
+    "bundled-skills.json",
+    "bundled-packages.json",
+    path.join("scripts", "update-agent-seed.mjs"),
+    path.join("scripts", "manage-managed-skills.mjs"),
+    path.join("scripts", "check-agent-seed-updates.mjs"),
+  ];
+  for (const relativePath of requiredFiles) {
+    try {
+      await stat(path.join(skillRoot, relativePath));
+    } catch (error) {
+      if (error.code === "ENOENT") {
+        throw new Error(`Invalid Agent Seed installation root: missing ${relativePath}`);
+      }
+      throw error;
+    }
+  }
+
+  const versionMetadata = await readVersionMetadata(skillRoot);
+  if (Object.keys(versionMetadata).length === 0) return false;
+  if (typeof versionMetadata.version !== "string" || versionMetadata.version.trim() === "") {
+    throw new Error("Invalid Agent Seed installation root: VERSION.json is missing version");
+  }
+  return true;
 }
 
 export async function writeAgentSeedNetworkDeniedState({ configPath = DEFAULT_CONFIG_PATH, now = new Date() } = {}) {

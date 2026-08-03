@@ -17,6 +17,22 @@ Do not scan the repository. Do not invoke Agent Seed onboarding or interview the
 
 Read `.agents/agent-seed.json` and validate `installation.skill_root` by checking `VERSION.json`, `bundled-skills.json`, `bundled-packages.json`, `scripts/update-agent-seed.mjs`, `scripts/check-agent-seed-updates.mjs`, and `scripts/manage-managed-skills.mjs` beneath that root. If the path is absent or stale, use only an Agent Seed path already exposed by the active runtime. Do not search personal or global directories. If no valid root is available, report `agent-seed-unavailable` and continue the task.
 
+## First-Run Instruction Migration
+
+On the first run, inspect only `AGENTS.md` and the applicable root `CLAUDE.md`
+instruction bridge. If the canonical once-per-conversation updater rule is
+missing, or `AGENTS.md` still contains the old direct
+`manage-managed-skills.mjs check` preflight, report the repair before the user
+task continues. Do not scan other repository files.
+
+An approved managed installation may return
+`post_install.action: ensure-agent-seed-updater-startup-rule`. Treat that as an
+explicit, approval-gated instruction-repair action: add the canonical rule,
+remove only the old direct manager preflight, preserve unrelated instructions,
+and ensure `CLAUDE.md` imports `@AGENTS.md` only for Claude Code or
+codeagent-cli. If installation approval did not disclose these instruction
+edits, ask separately before making them.
+
 ## Check
 
 Run the combined preflight for the active project platform:
@@ -24,6 +40,12 @@ Run the combined preflight for the active project platform:
 ```bash
 node <agent-seed-root>/scripts/check-agent-seed-updates.mjs <project-root> --platform <platform> --skill-root <agent-seed-root> --json
 ```
+
+If `.agents/agent-seed.json` sets `self_update.check_on_start` to `false`, the
+coordinator skips only the Agent Seed remote self-update portion and still runs
+the local managed check. If the owner explicitly asks to skip the self-update
+check for the current conversation, pass `--skip-self-update`; do not persist
+that one-conversation choice.
 
 Keep `current` and `declined-current-version` silent. Report one concise combined notice for `update-available`, `install-available`, `missing`, `legacy-unmanaged`, `unknown`, and returned errors. Do not offer entries for another platform.
 

@@ -1,4 +1,5 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -11,21 +12,29 @@ export async function runAgentSeedPreflight({
   skillRoot,
   targetDir,
   platform,
+  skipSelfUpdate = false,
   runSelfUpdate = runSelfUpdateCheck,
   inspectManaged = inspectManagedUpdates,
 }) {
   const result = { agent_seed: { state: "unknown" }, managed: [], external: [], errors: [] };
 
-  try {
-    const update = await runSelfUpdate({ skillRoot, targetDir });
-    result.agent_seed = {
-      state: update.hasUpdate ? "update-available" : "current",
-      current_version: update.currentVersion,
-      available_version: update.latestVersion,
-      cached: update.cached === true,
-    };
-  } catch (error) {
-    result.errors.push({ source: "agent-seed", message: error.message });
+  const selfUpdateSkipReason = skipSelfUpdate
+    ? "conversation-skip"
+    : await getConfiguredSelfUpdateSkipReason(targetDir);
+  if (selfUpdateSkipReason) {
+    result.agent_seed = { state: "skipped", reason: selfUpdateSkipReason };
+  } else {
+    try {
+      const update = await runSelfUpdate({ skillRoot, targetDir });
+      result.agent_seed = {
+        state: update.hasUpdate ? "update-available" : "current",
+        current_version: update.currentVersion,
+        available_version: update.latestVersion,
+        cached: update.cached === true,
+      };
+    } catch (error) {
+      result.errors.push({ source: "agent-seed", message: error.message });
+    }
   }
 
   try {
@@ -37,6 +46,17 @@ export async function runAgentSeedPreflight({
   }
 
   return result;
+}
+
+async function getConfiguredSelfUpdateSkipReason(targetDir) {
+  try {
+    const configPath = path.join(path.resolve(targetDir), ".agents", "agent-seed.json");
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    return config.self_update?.check_on_start === false ? "check-on-start-disabled" : "";
+  } catch (error) {
+    if (error.code === "ENOENT") return "";
+    throw error;
+  }
 }
 
 export async function runSelfUpdateCheck({ skillRoot, targetDir }) {
@@ -52,19 +72,22 @@ export async function runSelfUpdateCheck({ skillRoot, targetDir }) {
 function parseArgs(args) {
   const [targetDir, ...rest] = args;
   if (!targetDir) {
-    throw new Error("Usage: node scripts/check-agent-seed-updates.mjs <target-project> --platform <platform> [--skill-root <agent-seed-root>] [--json]");
+    throw new Error("Usage: node scripts/check-agent-seed-updates.mjs <target-project> --platform <platform> [--skill-root <agent-seed-root>] [--skip-self-update] [--json]");
   }
 
   const options = {
     targetDir: path.resolve(targetDir),
     platform: "",
     skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."),
+    skipSelfUpdate: false,
     json: false,
   };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--skip-self-update") {
+      options.skipSelfUpdate = true;
     } else if (["--platform", "--skill-root"].includes(arg)) {
       const value = rest[index += 1];
       if (!value) throw new Error(`${arg} requires a value`);
