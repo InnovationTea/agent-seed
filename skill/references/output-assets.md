@@ -17,13 +17,34 @@ Use this reference before generating new onboarding files.
 
 Always generate or update `AGENTS.md` unless the user explicitly asks for another file only.
 
-When Agent Seed manages bundled skills or packages for a project, add a short
-session preflight to `AGENTS.md`: before the first task in a new agent session,
-run `node <agent-seed-root>/scripts/manage-managed-skills.mjs check <project-root> --platform <platform> --json`. The command is read-only and non-blocking:
-report non-current entries, then continue the user's task. Only run its
-`apply` command after explicit owner approval. Do not add a recurring hash
-scan, automatic upgrade, or an external-plugin directory replacement to the
-generated session preflight.
+After an approved project-local `agent-seed-updater` install, add this portable
+startup rule to `AGENTS.md`:
+
+> Before the first user task in each new agent conversation, invoke the
+> installed `agent-seed-updater` exactly once. Let it run only Agent Seed's
+> cached self-update check and the local managed-skill manifest check; do not
+> let it invoke Agent Seed onboarding or scan the repository. Report actionable
+> results without blocking the requested task. Do not invoke it again in the
+> same conversation unless an approved synchronous Agent Seed update requires
+> one immediate recheck.
+
+Codex and OpenCode read the canonical startup rule from `AGENTS.md`. For Claude
+Code and codeagent-cli (cac), add or preserve a root `CLAUDE.md` import of
+`@AGENTS.md`. The updater installation and these disclosed instruction edits
+require owner approval. Do not add a recurring hash scan, automatic upgrade,
+lifecycle hook, or external-plugin directory replacement.
+
+Verify the updater target and startup-rule visibility independently. When a
+pre-existing or partial installation verifies but has a missing startup rule,
+offer an approval-gated repair of only `AGENTS.md` or the required `CLAUDE.md`
+import. If the instruction edit fails after the skill copy, keep the harmless
+skill files and report the exact missing instruction surface.
+
+Existing projects may contain an old direct `manage-managed-skills.mjs check`
+preflight. After the approved `agent-seed-updater` install succeeds, replace
+only that obsolete direct manager preflight and preserve unrelated project
+instructions. Do not use this migration to scan the repository, interview the
+owner, or repeat knowledge distillation.
 
 After an approved project-local `knowledge-updater` install, add this concise
 portable completion rule to `AGENTS.md` and keep the detailed workflow in the
@@ -314,6 +335,12 @@ and these stated instruction edits; it does not authorize platform hooks or
 other harness configuration. Check the skill target and instruction surface
 separately on every onboarding run so a pre-existing or partial installation
 can repair its missing completion rule without replacing the skill.
+
+After an approved `agent-seed-updater` install succeeds, add the startup rule
+from Asset Selection. This is the only bundled direct skill whose successful
+installation adds the once-per-conversation startup rule. Check the skill
+target and instruction surface independently so partial installations can be
+repaired without replacing an already verified updater.
 
 ## Bundled Package Installation
 

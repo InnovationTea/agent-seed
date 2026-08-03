@@ -263,16 +263,59 @@ test("external packages config includes install metadata", async () => {
   }
 });
 
-test("Agent Seed documents a non-blocking managed update session preflight", async () => {
+test("Agent Seed installs a non-blocking agent-seed-updater startup rule", async () => {
   const rootDir = process.cwd();
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
   const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
 
   await stat(path.join(rootDir, "skill", "scripts", "manage-managed-skills.mjs"));
-  assert.match(skill, /Before executing the first user task in a new agent session/i);
-  assert.match(skill, /manage-managed-skills\.mjs check/i);
-  assert.match(skill, /must not block the requested task/i);
-  assert.match(outputAssets, /session preflight/i);
+  await stat(path.join(rootDir, "skill", "scripts", "check-agent-seed-updates.mjs"));
+  for (const content of [skill, outputAssets]) {
+    assert.match(content, /agent-seed-updater/i);
+    assert.match(content, /before the first.*task.*new agent conversation/is);
+    assert.match(content, /exactly once|do not invoke it again/i);
+    assert.match(content, /cached.*self-update.*managed-skill/is);
+    assert.match(content, /do not.*Agent Seed onboarding.*scan the repository/is);
+    assert.match(content, /without blocking|must not block/i);
+    assert.match(content, /owner approval|user approval/i);
+  }
+  assert.match(skill, /update-agent-seed\.mjs --json/);
+  assert.match(skill, /self-update.*must never.*--apply/is);
+  assert.match(outputAssets, /Codex.*OpenCode.*AGENTS\.md/is);
+  assert.match(outputAssets, /Claude Code.*codeagent-cli.*CLAUDE\.md/is);
+  assert.match(outputAssets, /pre-existing|partial installation/i);
+  assert.match(outputAssets, /missing.*startup rule.*offer.*repair/is);
+  assert.doesNotMatch(outputAssets, /run `node <agent-seed-root>\/scripts\/manage-managed-skills\.mjs check/);
+});
+
+test("Agent Seed migrates the existing direct managed preflight without onboarding", async () => {
+  const skill = await readFile(path.join(process.cwd(), "skill", "SKILL.md"), "utf8");
+  const outputAssets = await readFile(path.join(process.cwd(), "skill", "references", "output-assets.md"), "utf8");
+
+  for (const content of [skill, outputAssets]) {
+    assert.match(content, /old|obsolete|legacy/i);
+    assert.match(content, /direct.*manage-managed-skills\.mjs.*preflight/is);
+    assert.match(content, /replace|remove/i);
+    assert.match(content, /after.*agent-seed-updater.*install/is);
+    assert.match(content, /preserve unrelated/i);
+    assert.match(content, /do not.*scan.*interview.*knowledge distillation/is);
+  }
+});
+
+test("README documents the lightweight Agent Seed updater lifecycle", async () => {
+  const readme = await readFile(path.join(process.cwd(), "README.md"), "utf8");
+
+  assert.match(readme, /agent-seed-updater/i);
+  assert.match(readme, /check-agent-seed-updates\.mjs/);
+  assert.match(readme, /24-hour cache/i);
+  assert.match(readme, /install-available/);
+  assert.match(readme, /declined-current-version/);
+  assert.match(readme, /same version.*not.*prompt|same version.*suppressed/is);
+  assert.match(readme, /higher.*version.*prompt/is);
+  assert.match(readme, /synchronous.*recheck/is);
+  assert.match(readme, /queued.*next conversation/is);
+  assert.match(readme, /knowledge-updater.*after.*task/is);
+  assert.match(readme, /does not.*repository scan|no repository scan/is);
 });
 
 test("bundled install manifests require activation preflight handling", async () => {
