@@ -373,6 +373,44 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.doesNotMatch(codexPrompt, /OpenCLI/i);
 });
 
+test("knowledge-updater bundled skill defines recurring bounded knowledge maintenance", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
+  const updater = config.bundled_skills.find((skill) => skill.name === "knowledge-updater");
+
+  assert.ok(updater, "expected knowledge-updater bundled skill");
+  assert.equal(updater.kind, "multi-platform-direct-skill");
+  assert.equal(updater.source_path, "bundled-skills/knowledge-updater/skill");
+  assert.equal(updater.default_install.mode, "project-local");
+  assert.equal(updater.default_install.offer_by_default, true);
+  assert.equal(updater.default_install.requires_user_approval, true);
+  assert.equal(updater.default_install.install_only_for_detected_or_requested_platforms, true);
+  assert.deepEqual(updater.platforms.map((platform) => platform.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
+  assert.equal(
+    updater.platforms.find((platform) => platform.platform === "codex").overlay_path,
+    "bundled-skills/knowledge-updater/overlays/codex",
+  );
+
+  const skill = await readFile(path.join(rootDir, "skill", updater.source_path, "SKILL.md"), "utf8");
+  assert.match(skill, /after.*task.*before.*final response/is);
+  assert.match(skill, /current conversation/i);
+  assert.match(skill, /AGENTS\.md/);
+  assert.match(skill, /agents\.d\//);
+  assert.match(skill, /do not scan.*repository/is);
+  assert.match(skill, /do not.*child agent/is);
+  assert.match(skill, /smallest coherent edit/i);
+  assert.match(skill, /conflict.*not updated/is);
+  assert.match(skill, /Knowledge assets: no new reusable knowledge/);
+  assert.match(skill, /Knowledge assets: updated/);
+
+  const codexPrompt = await readFile(
+    path.join(rootDir, "skill", "bundled-skills", "knowledge-updater", "overlays", "codex", "agents", "openai.yaml"),
+    "utf8",
+  );
+  assert.match(codexPrompt, /knowledge-updater/i);
+  assert.match(codexPrompt, /before.*final response/i);
+});
+
 test("Agent Seed documents controlled knowledge-only session updates and project configuration boundaries", async () => {
   const rootDir = process.cwd();
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
