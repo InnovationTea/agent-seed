@@ -102,22 +102,33 @@ incremental maintenance belongs to the bundled `knowledge-updater` skill.
 
 Offer its project-local installation for every detected, requested, or
 owner-confirmed platform according to `bundled-skills.json`. Installation and
-the corresponding `AGENTS.md` edit require owner approval. After an approved
-install, add a concise project rule requiring the main agent to invoke
-`knowledge-updater` after completing and verifying every task, immediately
-before its final response, and to append exactly one returned knowledge-asset
-status.
+the corresponding project-instruction edits require owner approval. After an
+approved install, add a concise canonical rule to `AGENTS.md` for Codex and
+OpenCode. For Claude Code and codeagent-cli, ensure the root `CLAUDE.md`
+imports `@AGENTS.md` so the same rule is visible without duplication. The rule
+requires the main agent to invoke `knowledge-updater` after completing and
+verifying every task, immediately before its final response, and to append
+exactly one returned knowledge-asset status.
+
+Verify skill availability and completion-rule visibility independently. An
+installed skill with a missing or stale instruction bridge is not complete;
+offer an approval-gated repair even when the skill target already verifies.
+Treat a copied skill whose instruction edit failed as a recoverable partial
+installation: report the missing instruction surface, leave the harmless skill
+files in place, and offer to repair only the missing rule or import.
 
 Do not run Agent Seed, scan the repository, interview the owner, start a child
 agent, or configure a lifecycle hook for routine updates.
 
 During onboarding, inspect only project-local `.claude/settings.json` and
 `.cac/settings.json` files already in the target-root evidence set for legacy
-commands that reference `session-end-knowledge-update.mjs`. Report the exact
-project file and offer to remove the entry. Removal requires explicit approval;
-you must not silently edit hook settings and must not inspect personal or
-global settings without separate authorization. Existing legacy local data is
-left untouched.
+commands that reference `session-end-knowledge-update.mjs`. Parse each settings
+file as JSON, report the exact project file and exact matching command, and
+offer to remove only that matching hook array element. Removal requires
+explicit approval; preserve unrelated SessionEnd entries and all other
+settings. You must not silently edit hook settings and must not inspect
+personal or global settings without separate authorization. Existing legacy
+local data is left untouched.
 
 ## Activation Preflight
 

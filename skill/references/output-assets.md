@@ -27,18 +27,27 @@ generated session preflight.
 
 After an approved project-local `knowledge-updater` install, add this concise
 portable completion rule to `AGENTS.md` and keep the detailed workflow in the
-skill:
+skill. Codex and OpenCode read the canonical rule from `AGENTS.md`. For Claude
+Code and codeagent-cli (cac), add or preserve a root `CLAUDE.md` import of
+`@AGENTS.md` so both Claude-compatible hosts see the same rule:
 
 > After completing and verifying every task, invoke the installed
 > `knowledge-updater` skill immediately before the final response. Let it use
 > only current-conversation knowledge plus existing `AGENTS.md` and relevant
 > `agents.d/` files; do not let it scan the repository. Append exactly one
 > status returned by the skill, such as `Knowledge assets: updated (...)` or
-> `Knowledge assets: no new reusable knowledge`.
+> `Knowledge assets: no new reusable knowledge`. If the skill is unavailable
+> or cannot be invoked, append `Knowledge assets: update failed (skill
+> unavailable)` and finish the main task normally.
 
-The skill installation and this `AGENTS.md` edit require owner approval. Do
-not add the rule before installation succeeds. Do not generate lifecycle or
-SessionEnd hooks.
+The skill installation and required `AGENTS.md` or `CLAUDE.md` edits require
+owner approval. Verify the selected platform's skill target and host-visible
+completion rule independently. If the skill is installed but the completion
+rule or import is missing, offer an approval-gated repair even though the skill
+itself already verifies. Treat a copied skill followed by a failed instruction
+edit as a recoverable partial installation: keep the skill and report the exact
+missing rule or import for repair. Do not generate lifecycle or SessionEnd
+hooks.
 
 Generate `agents.d/` by default for knowledge distillation. Skip it only when the project is small and the owner explicitly wants everything in a concise `AGENTS.md`.
 
@@ -299,9 +308,12 @@ When `bundled-skills.json` marks `default_install.offer_by_default`, proactively
 After an approved `knowledge-updater` install succeeds, also add the recurring
 task-completion rule from Asset Selection to `AGENTS.md`. This is the only
 bundled direct skill whose successful installation adds that completion rule.
-The owner approval covers both the selected project-local skill target and the
-stated `AGENTS.md` edit; it does not authorize platform hooks or other harness
-configuration.
+For Claude Code and codeagent-cli, also ensure `CLAUDE.md` imports
+`@AGENTS.md`. The owner approval covers the selected project-local skill target
+and these stated instruction edits; it does not authorize platform hooks or
+other harness configuration. Check the skill target and instruction surface
+separately on every onboarding run so a pre-existing or partial installation
+can repair its missing completion rule without replacing the skill.
 
 ## Bundled Package Installation
 

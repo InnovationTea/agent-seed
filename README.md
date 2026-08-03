@@ -72,8 +72,12 @@ actions, secrets, and production operations still require separate approval.
 
 `knowledge-updater` is an approval-gated bundled direct skill for Codex,
 Claude Code, codeagent-cli, and OpenCode. After installation, Agent Seed adds a
-concise `AGENTS.md` rule requiring the main agent to invoke it after every
-completed and verified task, immediately before the final response.
+concise canonical `AGENTS.md` rule requiring the main agent to invoke it after
+every completed and verified task, immediately before the final response.
+Codex and OpenCode read that rule directly; Claude Code and codeagent-cli use a
+root `CLAUDE.md` import of `@AGENTS.md`. Skill availability and instruction
+visibility are verified independently so partial or pre-existing installs can
+repair a missing rule without replacing the skill.
 
 The updater uses only durable facts established in the current conversation
 plus existing `AGENTS.md` and relevant `agents.d/` files. It performs no repository scan, owner interview, transcript read, network action, or child-agent launch. It updates knowledge assets directly with minimal edits and always reports `updated`, `no new reusable knowledge`, `not initialized`, `conflict`, or `update failed`.
