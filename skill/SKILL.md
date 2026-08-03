@@ -42,6 +42,10 @@ Use `.agents/agent-seed.json` as the unified local Agent Seed config and state f
 ```json
 {
   "knowledge_asset_write_mode": "full-access",
+  "installation": {
+    "skill_root": "C:/Users/example/.codex/skills/agent-seed",
+    "recorded_at": "2026-08-03T10:00:00.000Z"
+  },
   "self_update": {
     "check_on_start": true,
     "check_interval_hours": 24,
@@ -71,23 +75,48 @@ This file may contain machine-specific proxy settings or local permission histor
 
 `install_prompt_history` is best-effort local audit history. On a declined recurring integration, append the activation time, platform, integration, decision, and owner-provided reason. Never interpret this history as an opt-out or skip marker. If the local state cannot be written, report that limitation and continue after capturing the reason in the current result.
 
-## Managed Skill Update Preflight
+## Agent Seed Updater
 
-Before executing the first user task in a new agent session, run the installed
-Agent Seed manager against the target project and active platform:
+Agent Seed's own activation continues to run the cached self-update check in
+`Version And Self Update`. That self-update preflight must never run
+`update-agent-seed.mjs --apply` automatically. Routine new-conversation checks
+belong to the bundled project-local `agent-seed-updater` skill instead of this
+onboarding skill.
 
-```bash
-node scripts/manage-managed-skills.mjs check <target-project> --platform <platform> --json
-```
+Offer `agent-seed-updater` for every detected, requested, or owner-confirmed
+platform according to `bundled-skills.json`. Installation and the corresponding
+project-instruction edits require owner approval. The normal self-update command
+records the installed root under `.agents/agent-seed.json.installation` so the
+project-local updater can locate the packaged scripts and manifests without
+searching personal or global skill directories.
 
-This preflight reads `.agents/managed-skills.json` and the installed bundled
-manifests only. It must not create project files, calculate content hashes, or
-block the requested task. It must not block the requested task. Report `update-available`, `missing`, and
-`legacy-unmanaged` entries concisely, then continue the request. Run
-`manage-managed-skills.mjs apply` only after explicit owner approval; approved
-updates replace the managed target and record its new version. The normal
-Agent Seed self-update check remains governed by `check_interval_hours` and
-must never run `update-agent-seed.mjs --apply` automatically.
+After an approved install, add one canonical startup rule to `AGENTS.md`:
+before the first user task in each new agent conversation, invoke the installed
+`agent-seed-updater` exactly once. Let it run only Agent Seed's cached
+self-update check and the local managed-skill manifest check; do not let it
+invoke Agent Seed onboarding or scan the repository. Report actionable results
+without blocking the requested task. Codex and OpenCode read the rule directly.
+For Claude Code and codeagent-cli, ensure the root `CLAUDE.md` imports
+`@AGENTS.md`.
+
+The manager uses schema version 2 in `.agents/managed-skills.json`. It reports
+`install-available` for new applicable default offers and retains
+`declined-current-version` only as a quiet diagnostic. Record a decline only
+after the owner explicitly rejects that exact manifest version. The same
+version stays suppressed; a higher manifest version is offered again. Run
+managed `apply` or `decline` commands only after the corresponding explicit
+owner response.
+
+Verify updater availability and startup-rule visibility independently. A
+pre-existing or partial installation with a missing startup rule must receive
+an approval-gated repair offer without replacing a verified skill directory.
+
+For an existing project, identify the old direct
+`manage-managed-skills.mjs check` preflight as obsolete. After the
+`agent-seed-updater` install succeeds, remove or replace only that direct
+manager preflight and preserve unrelated project instructions. Do not use this
+migration to scan the repository, interview the owner, or repeat knowledge
+distillation.
 
 Use `.agents/managed-skills.json` only for Agent Seed-managed bundled skills
 and packages. For `external-packages.json` integrations, record availability

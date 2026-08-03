@@ -48,8 +48,8 @@ guidance:
 
 | Path | Purpose | Git policy |
 | --- | --- | --- |
-| `.agents/agent-seed.json` | Local write mode, self-update state, proxy settings, and install-prompt history. | Local; ignore it. |
-| `.agents/managed-skills.json` | Versions and target paths for Agent Seed-managed bundled skills and packages. | Local; ignore it. |
+| `.agents/agent-seed.json` | Local write mode, installed Agent Seed root, self-update state, proxy settings, and install-prompt history. | Local; ignore it. |
+| `.agents/managed-skills.json` | Versions, target paths, and version-specific declined offers for Agent Seed-managed bundled skills and packages. | Local; ignore it. |
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
 | `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
 | `.agents/ticket-lookup/sites/` | Shared host-specific ticket navigation, parsing, and API-shape knowledge. | Shared; commit it. Never store ticket content or credentials. |
@@ -69,6 +69,15 @@ current user request -> .agents/agent-seed.json -> full-access
 The supported values are `ask-each-change`, `agent-approve`, and
 `full-access`. Even in `full-access`, installs, hook changes, external network
 actions, secrets, and production operations still require separate approval.
+
+`agent-seed-updater` is an approval-gated bundled direct skill for Codex,
+Claude Code, codeagent-cli, and OpenCode. Agent Seed installs its canonical
+`AGENTS.md` rule so it runs exactly once before the first project task in each
+new conversation. It calls `check-agent-seed-updates.mjs`, which combines the
+existing cached Agent Seed self-update check with the local managed-skill
+manifest check. It does not run Agent Seed onboarding or perform a repository
+scan. Codex and OpenCode read `AGENTS.md` directly; Claude Code and
+codeagent-cli use the root `CLAUDE.md` import.
 
 `knowledge-updater` is an approval-gated bundled direct skill for Codex,
 Claude Code, codeagent-cli, and OpenCode. After installation, Agent Seed adds a
@@ -197,21 +206,39 @@ During Agent Seed activation, `/agent-seed` reads the installed `VERSION.json`, 
 
 When Agent Seed installs a bundled direct skill or package into a project, it
 records the installed version and target path in
-`.agents/managed-skills.json`. The state file is local operator state and
-should stay ignored by Git. At the start of a new agent session, run a
-read-only status check for the project platform:
+`.agents/managed-skills.json`. Schema version 2 also stores
+`declined_install_offers`. The state file is local operator state and should
+stay ignored by Git. At the start of a new conversation, the installed
+`agent-seed-updater` runs the combined preflight for the project platform:
 
 ```bash
-node scripts/manage-managed-skills.mjs check <target-project> --platform <platform> --json
+node scripts/check-agent-seed-updates.mjs <target-project> --platform <platform> --json
 ```
 
-The result reports `current`, `update-available`, `missing`, or
-`legacy-unmanaged`. It does not hash installed directories or change project
-files. After explicit owner approval, update one managed item with:
+The Agent Seed part keeps the existing 24-hour cache and approval-gated apply
+behavior. The managed part reports `current`, `update-available`, `missing`,
+`legacy-unmanaged`, `install-available`, or `declined-current-version`. A
+declined current version is diagnostic-only and the same version is suppressed
+instead of prompting again. A higher manifest version prompts again. Deferring
+or ignoring an offer does not record a decline.
+
+The preflight does not hash installed directories, modify managed project
+content, run onboarding, or scan the repository. After explicit owner
+approval, install or update one managed item with:
 
 ```bash
 node scripts/manage-managed-skills.mjs apply <target-project> --name <managed-name> --platform <platform> --approved
 ```
+
+Record an explicit version-specific decline with:
+
+```bash
+node scripts/manage-managed-skills.mjs decline <target-project> --name <managed-name> --platform <platform> --confirmed
+```
+
+After a synchronous Agent Seed update, run the managed recheck immediately
+against the newly installed manifests. When Windows reports `queued`, defer
+that recheck until the next conversation after replacement completes.
 
 Direct skills are staged and replaced with rollback on verification failure.
 Bundled packages use their existing installer with backups of their declared
@@ -219,6 +246,10 @@ write roots. A legacy unrecorded installation is force-replaced only after the
 same approval, then becomes managed. External integrations remain owned by
 their platform; Agent Seed records their status and invokes only a
 platform-native update action after separate approval.
+
+Startup `agent-seed-updater`, onboarding `agent-seed`, and end-of-task
+`knowledge-updater` have separate responsibilities. `knowledge-updater` runs
+after each completed task and maintains only durable project guidance.
 
 ## Bundled Packages
 
