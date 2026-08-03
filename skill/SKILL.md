@@ -1,6 +1,6 @@
 ---
 name: agent-seed
-description: Use when the user asks to distill repository evidence and owner knowledge into agent runbooks, make a repository AI-agent ready, generate or update AGENTS.md/agents.d/CLAUDE.md, prepare Codex/Claude/codeagent-cli/OpenCode to work in an existing codebase, identify common or private framework conventions during repository scans, capture project setup/build/test/debug/tooling knowledge from a knowledgeable developer, define human review checkpoints for agent self-directed development loops, recommend configured external agent plugins, install or document bundled packages or platform skills, or add newly discovered project knowledge to reusable agent guidance assets.
+description: Use when the user asks to distill repository evidence and owner knowledge into agent runbooks, make a repository AI-agent ready, generate or comprehensively refresh AGENTS.md/agents.d/CLAUDE.md, prepare Codex/Claude/codeagent-cli/OpenCode to work in an existing codebase, identify common or private framework conventions during repository scans, capture project setup/build/test/debug/tooling knowledge from a knowledgeable developer, define human review checkpoints for agent self-directed development loops, recommend configured external agent plugins, or install or document bundled packages or platform skills.
 ---
 
 # Agent Seed
@@ -157,7 +157,7 @@ The output files are internal engineering guides and automation runbooks, not co
 - Capture approved skills, recommended external plugins, project scripts, and internal tools with trigger conditions, required inputs, success signals, and safety levels.
 - Capture bundled direct skills with source path, supported platforms, target paths, trigger conditions, default-offer rules, verification, and safety rules.
 - Capture bundled packages and their platform skills with version, source, install target, trigger conditions, required inputs, verification, and safety rules.
-- Update existing onboarding assets when reusable project knowledge appears during later agent work.
+- Route routine knowledge discovered during later agent work to the installed `knowledge-updater` skill.
 - Distill tacit knowledge into executable instructions, recipes, playbooks, and handoff criteria, not background explanation.
 - Preserve existing instruction files unless the user confirms replacement.
 - Resolve `knowledge_asset_write_mode` before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets directly and report diffs, but still ask before secrets, production actions, destructive changes, installs, hooks, external network use, or personal/global directory writes.
@@ -294,7 +294,7 @@ For new onboarding assets, read `references/output-assets.md`.
 
 Always generate or update `AGENTS.md` unless the user explicitly asks for another file only. Generate `agents.d/` by default for distilled knowledge. Generate platform-specific files only for requested or owner-used platforms. Before creating or editing any of these assets, apply the resolved `knowledge_asset_write_mode` from the current request or `.agents/agent-seed.json`.
 
-For later knowledge additions, read `references/update-existing-assets.md`, classify the new knowledge into the right file, and use the smallest coherent edit.
+When the user explicitly requests an Agent Seed comprehensive refresh of existing assets, read `references/update-existing-assets.md`, classify the confirmed knowledge into the right file, and use the smallest coherent edit. Routine task-completion updates belong to the installed `knowledge-updater` skill instead.
 
 ### 7. Validate With A Fresh-Agent Dry Run
 

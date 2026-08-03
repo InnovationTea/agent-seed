@@ -415,6 +415,7 @@ test("Agent Seed installs a knowledge-updater completion rule without lifecycle 
   const rootDir = process.cwd();
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
   const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+  const frontmatter = skill.match(/^---\r?\n([\s\S]*?)\r?\n---/)?.[1] || "";
 
   for (const content of [skill, outputAssets]) {
     assert.match(content, /knowledge-updater/i);
@@ -425,6 +426,9 @@ test("Agent Seed installs a knowledge-updater completion rule without lifecycle 
 
   assert.match(outputAssets, /Knowledge assets: no new reusable knowledge/);
   assert.match(outputAssets, /Knowledge assets: updated/);
+  assert.doesNotMatch(frontmatter, /add newly discovered project knowledge/i);
+  assert.doesNotMatch(skill, /Update existing onboarding assets when reusable project knowledge appears during later agent work/i);
+  assert.match(skill, /explicitly requests.*Agent Seed.*refresh/is);
 });
 
 test("Agent Seed treats legacy SessionEnd hooks as approval-gated migration", async () => {
