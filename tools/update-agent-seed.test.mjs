@@ -120,6 +120,75 @@ test("agent-seed updater invalidates cached state for another installed version"
   }), true);
 });
 
+test("Agent Seed updater records its installed root without discarding config", async () => {
+  const updater = await importUpdater("installation-root");
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-install-root-"));
+  const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+  const skillRoot = path.join(rootDir, "installed", "agent-seed");
+
+  try {
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(configPath, `${JSON.stringify({ knowledge_asset_write_mode: "full-access" })}\n`);
+    await updater.writeAgentSeedInstallationState({
+      configPath,
+      skillRoot,
+      now: new Date("2026-08-03T10:00:00.000Z"),
+    });
+
+    const config = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(config.knowledge_asset_write_mode, "full-access");
+    assert.deepEqual(config.installation, {
+      skill_root: path.resolve(skillRoot),
+      recorded_at: "2026-08-03T10:00:00.000Z",
+    });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("cached Agent Seed CLI checks record the installed root without a network request", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-cached-install-root-"));
+  const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+  const skillRoot = path.join(rootDir, "installed", "agent-seed");
+  const scriptPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+
+  try {
+    await mkdir(skillRoot, { recursive: true });
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(
+      path.join(skillRoot, "VERSION.json"),
+      `${JSON.stringify({ version: "v1.2.3", repository: "owner/agent-seed" })}\n`,
+    );
+    await writeFile(
+      configPath,
+      `${JSON.stringify({
+        self_update: {
+          check_interval_hours: 24,
+          last_check: {
+            status: "current",
+            current_version: "v1.2.3",
+            latest_version: "v1.2.3",
+            checked_at: new Date().toISOString(),
+          },
+        },
+      })}\n`,
+    );
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      scriptPath,
+      "--json",
+      "--target",
+      skillRoot,
+      "--config",
+      configPath,
+    ], { cwd: rootDir });
+    assert.equal(JSON.parse(stdout).cached, true);
+    assert.equal(JSON.parse(await readFile(configPath, "utf8")).installation.skill_root, path.resolve(skillRoot));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("agent-seed updater dispatches a detached Windows completion notification", async () => {
   const updater = await importUpdater("windows-notification");
   const calls = [];

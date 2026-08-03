@@ -139,12 +139,13 @@ async function main(argv = process.argv.slice(2)) {
     return;
   }
 
-  const agentSeedConfig = await readAgentSeedConfig(configPath);
-  let env = await buildProxyEnvironmentWithSystemProxy({ env: process.env, config: agentSeedConfig });
-
   const scriptDir = path.dirname(fileURLToPath(import.meta.url));
   const defaultTargetDir = path.resolve(scriptDir, "..");
   const targetDir = path.resolve(options.target || defaultTargetDir);
+  await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
+  const agentSeedConfig = await readAgentSeedConfig(configPath);
+  let env = await buildProxyEnvironmentWithSystemProxy({ env: process.env, config: agentSeedConfig });
+
   const versionMetadata = await readVersionMetadata(targetDir);
   const repository = options.repository || versionMetadata.repository;
 
@@ -288,6 +289,18 @@ export async function writeAgentSeedProxyConfig({ configPath = DEFAULT_CONFIG_PA
     self_update: {
       ...(config.self_update || {}),
       proxy: nextProxy,
+    },
+  });
+}
+
+export async function writeAgentSeedInstallationState({ configPath = DEFAULT_CONFIG_PATH, skillRoot, now = new Date() } = {}) {
+  if (typeof skillRoot !== "string" || skillRoot.trim() === "") throw new Error("Agent Seed skill root is required.");
+  const config = await readAgentSeedConfig(configPath);
+  await writeAgentSeedConfig(configPath, {
+    ...config,
+    installation: {
+      skill_root: path.resolve(skillRoot),
+      recorded_at: now.toISOString(),
     },
   });
 }
