@@ -18,6 +18,14 @@
         "requires_user_approval": true,
         "install_only_for_detected_or_requested_platforms": true
       },
+      "post_install": {
+        "action": "ensure-agent-seed-updater-startup-rule",
+        "requires_user_approval": true,
+        "instruction_files": [
+          "AGENTS.md",
+          "CLAUDE.md"
+        ]
+      },
       "platforms": [
         {
           "platform": "codex",

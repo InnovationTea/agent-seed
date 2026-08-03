@@ -272,6 +272,50 @@ test("approved installation clears the matching declined offer", async () => {
   }
 });
 
+test("installing agent-seed-updater returns the startup-rule migration action", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-post-install-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot);
+    const manifestPath = path.join(skillRoot, "bundled-skills.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    manifest.bundled_skills.push({
+      name: "agent-seed-updater",
+      version: "v1.1.0",
+      source_path: "bundled-skills/agent-seed-updater/skill",
+      default_install: { offer_by_default: true },
+      post_install: {
+        action: "ensure-agent-seed-updater-startup-rule",
+        requires_user_approval: true,
+        instruction_files: ["AGENTS.md", "CLAUDE.md"],
+      },
+      platforms: [{ platform: "codex", target_path: "skills/agent-seed-updater" }],
+    });
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+    await mkdir(path.join(skillRoot, "bundled-skills", "agent-seed-updater", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "agent-seed-updater", "skill", "SKILL.md"), "updater\n");
+
+    const result = await manager.applyManagedUpdate({
+      skillRoot,
+      targetDir,
+      name: "agent-seed-updater",
+      platform: "codex",
+      approved: true,
+    });
+
+    assert.equal(result.status, "installed");
+    assert.deepEqual(result.post_install, {
+      action: "ensure-agent-seed-updater-startup-rule",
+      requires_user_approval: true,
+      instruction_files: ["AGENTS.md", "CLAUDE.md"],
+    });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("external integrations record ownership and require approval for native updates", async () => {
   const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-external-state-"));
 

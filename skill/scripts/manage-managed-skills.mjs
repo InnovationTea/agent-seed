@@ -125,6 +125,7 @@ export async function applyManagedUpdate({ skillRoot, targetDir, name, platform,
       source: entry.source_path,
     });
     await rm(backupPath, { recursive: true, force: true });
+    return { status: targetExisted ? "updated" : "installed", post_install: entry.post_install ?? null };
   } catch (error) {
     await rm(targetPath, { recursive: true, force: true });
     if (targetExisted && (await pathExists(backupPath))) {
@@ -236,7 +237,23 @@ function normalizeEntry(entry, platformEntry, kind) {
     source_path: entry.source_path,
     overlay_path: platformEntry.overlay_path,
     offer_by_default: entry.default_install?.offer_by_default === true,
+    post_install: normalizePostInstall(entry.post_install, entry.name),
     write_paths: entry.default_install?.writes || [platformEntry.target_path],
+  };
+}
+
+function normalizePostInstall(postInstall, name) {
+  if (postInstall === undefined) return null;
+  if (!postInstall || typeof postInstall !== "object" || Array.isArray(postInstall)
+      || typeof postInstall.action !== "string" || postInstall.action.trim() === ""
+      || postInstall.requires_user_approval !== true
+      || !Array.isArray(postInstall.instruction_files)) {
+    throw new Error(`Invalid post-install action: ${name}`);
+  }
+  return {
+    action: postInstall.action,
+    requires_user_approval: true,
+    instruction_files: postInstall.instruction_files,
   };
 }
 

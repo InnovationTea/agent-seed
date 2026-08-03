@@ -20,6 +20,15 @@ function futureDeadline() {
   return new Date(Date.now() + 60_000).toISOString();
 }
 
+async function writeValidAgentSeedLayout(skillRoot) {
+  await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+  await writeFile(path.join(skillRoot, "bundled-skills.json"), '{"bundled_skills":[]}\n');
+  await writeFile(path.join(skillRoot, "bundled-packages.json"), '{"bundled_packages":[]}\n');
+  for (const script of ["update-agent-seed.mjs", "manage-managed-skills.mjs", "check-agent-seed-updates.mjs"]) {
+    await writeFile(path.join(skillRoot, "scripts", script), "// fixture\n");
+  }
+}
+
 test("agent-seed updater compares release versions and extracts the agent-seed asset", async () => {
   const updater = await importUpdater();
   const latestRelease = {
@@ -159,6 +168,7 @@ test("cached Agent Seed CLI checks record the installed root without a network r
       path.join(skillRoot, "VERSION.json"),
       `${JSON.stringify({ version: "v1.2.3", repository: "owner/agent-seed" })}\n`,
     );
+    await writeValidAgentSeedLayout(skillRoot);
     await writeFile(
       configPath,
       `${JSON.stringify({
@@ -184,6 +194,30 @@ test("cached Agent Seed CLI checks record the installed root without a network r
     ], { cwd: rootDir });
     assert.equal(JSON.parse(stdout).cached, true);
     assert.equal(JSON.parse(await readFile(configPath, "utf8")).installation.skill_root, path.resolve(skillRoot));
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("invalid Agent Seed targets do not replace the recorded installation root", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-invalid-install-root-"));
+  const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+  const validRoot = path.join(rootDir, "valid-agent-seed");
+  const invalidRoot = path.join(rootDir, "invalid-agent-seed");
+  const scriptPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+
+  try {
+    await mkdir(invalidRoot, { recursive: true });
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(
+      configPath,
+      `${JSON.stringify({ installation: { skill_root: path.resolve(validRoot), recorded_at: "2026-08-03T10:00:00.000Z" } })}\n`,
+    );
+    await assert.rejects(
+      execFileAsync(process.execPath, [scriptPath, "--json", "--target", invalidRoot, "--config", configPath, "--repository", "owner/agent-seed"]),
+      /Invalid Agent Seed installation root/,
+    );
+    assert.equal(JSON.parse(await readFile(configPath, "utf8")).installation.skill_root, path.resolve(validRoot));
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
