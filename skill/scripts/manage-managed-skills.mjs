@@ -7,7 +7,12 @@ import { installGitCodeTracker } from "./install-git-code-tracker.mjs";
 
 const STATE_DIRECTORY = ".agents";
 const STATE_FILE = "managed-skills.json";
-const EMPTY_STATE = Object.freeze({ schema_version: 1, managed_skills: [], external_integrations: [] });
+const EMPTY_STATE = Object.freeze({
+  schema_version: 2,
+  managed_skills: [],
+  external_integrations: [],
+  declined_install_offers: [],
+});
 
 export async function readManagedState(targetDir) {
   const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
@@ -43,13 +48,23 @@ export async function inspectManagedUpdates({ skillRoot, targetDir, platform }) 
   for (const entry of entries) {
     const record = state.managed_skills.find((candidate) => candidate.name === entry.name && candidate.platform === platform);
     const targetExists = await pathExists(resolveInside(resolvedTargetDir, entry.target_path, `${entry.name} target path`));
-    if (!record && !targetExists) continue;
+    const decline = state.declined_install_offers.find((candidate) =>
+      candidate.name === entry.name
+      && candidate.kind === entry.kind
+      && candidate.platform === platform
+      && compareVersions(candidate.offered_version, entry.version) === 0
+    );
+    if (!record && !targetExists && !entry.offer_by_default) continue;
 
     const status = record
       ? targetExists
         ? compareVersions(record.version, entry.version) < 0 ? "update-available" : "current"
         : "missing"
-      : "legacy-unmanaged";
+      : targetExists
+        ? "legacy-unmanaged"
+        : decline
+          ? "declined-current-version"
+          : "install-available";
     managed.push({
       name: entry.name,
       kind: entry.kind,
@@ -200,6 +215,7 @@ function normalizeEntry(entry, platformEntry, kind) {
     target_path: platformEntry.target_path,
     source_path: entry.source_path,
     overlay_path: platformEntry.overlay_path,
+    offer_by_default: entry.default_install?.offer_by_default === true,
     write_paths: entry.default_install?.writes || [platformEntry.target_path],
   };
 }
@@ -249,10 +265,18 @@ async function recordManagedInstall(targetDir, record) {
 
 function normalizeState(state, statePath) {
   if (!state || Array.isArray(state) || typeof state !== "object") throw new Error(`Invalid managed skill state: ${statePath}`);
-  if (state.schema_version !== 1 || !Array.isArray(state.managed_skills) || !Array.isArray(state.external_integrations)) {
+  if (![1, 2].includes(state.schema_version)
+    || !Array.isArray(state.managed_skills)
+    || !Array.isArray(state.external_integrations)
+    || (state.schema_version === 2 && !Array.isArray(state.declined_install_offers))) {
     throw new Error(`Invalid managed skill state: ${statePath}`);
   }
-  return { schema_version: 1, managed_skills: state.managed_skills, external_integrations: state.external_integrations };
+  return {
+    schema_version: 2,
+    managed_skills: state.managed_skills,
+    external_integrations: state.external_integrations,
+    declined_install_offers: state.declined_install_offers || [],
+  };
 }
 
 function parseVersion(value) {

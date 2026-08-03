@@ -59,12 +59,73 @@ test("readManagedState returns an empty state for an unmanaged project", async (
 
   try {
     assert.deepEqual(await manager.readManagedState(targetDir), {
-      schema_version: 1,
+      schema_version: 2,
       managed_skills: [],
       external_integrations: [],
+      declined_install_offers: [],
     });
   } finally {
     await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("inspectManagedUpdates reports new default offers and suppresses the declined version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-offers-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot);
+    const initial = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(initial.managed.find((entry) => entry.name === "gitpush").state, "install-available");
+
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(
+      path.join(targetDir, ".agents", "managed-skills.json"),
+      `${JSON.stringify({
+        schema_version: 2,
+        managed_skills: [],
+        external_integrations: [],
+        declined_install_offers: [{
+          name: "gitpush",
+          kind: "direct-skill",
+          platform: "codex",
+          offered_version: "v1.1.0",
+          declined_at: "2026-08-03T10:00:00.000Z",
+        }],
+      })}\n`,
+    );
+
+    const declined = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(declined.managed.find((entry) => entry.name === "gitpush").state, "declined-current-version");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("read-only inspection normalizes schema v1 without rewriting it", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-v1-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+  const statePath = path.join(targetDir, ".agents", "managed-skills.json");
+
+  try {
+    await writeManifest(skillRoot);
+    await mkdir(path.dirname(statePath), { recursive: true });
+    const original = `${JSON.stringify({ schema_version: 1, managed_skills: [], external_integrations: [] })}\n`;
+    await writeFile(statePath, original);
+
+    const state = await manager.readManagedState(targetDir);
+    assert.deepEqual(state, {
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [],
+      declined_install_offers: [],
+    });
+    await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(await readFile(statePath, "utf8"), original);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
   }
 });
 
@@ -187,11 +248,12 @@ async function writeManifest(skillRoot) {
     path.join(skillRoot, "bundled-skills.json"),
     `${JSON.stringify({
       bundled_skills: ["gitpush", "gittag", "gitsync"].map((name) => ({
-        name,
-        version: "v1.1.0",
-        kind: "multi-platform-direct-skill",
-        source_path: `bundled-skills/${name}/skill`,
-        platforms: [{ platform: "codex", target_path: `skills/${name}` }],
+      name,
+      version: "v1.1.0",
+      kind: "multi-platform-direct-skill",
+      source_path: `bundled-skills/${name}/skill`,
+      default_install: { offer_by_default: true },
+      platforms: [{ platform: "codex", target_path: `skills/${name}` }],
       })),
     })}\n`,
   );
