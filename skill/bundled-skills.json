@@ -193,6 +193,68 @@
       }
     },
     {
+      "name": "knowledge-updater",
+      "version": "$AGENT_SEED_VERSION",
+      "kind": "multi-platform-direct-skill",
+      "source_path": "bundled-skills/knowledge-updater/skill",
+      "purpose": "Maintain AGENTS.md and agents.d from durable knowledge established during the current task before the final response.",
+      "default_install": {
+        "mode": "project-local",
+        "offer_by_default": true,
+        "requires_user_approval": true,
+        "install_only_for_detected_or_requested_platforms": true
+      },
+      "platforms": [
+        {
+          "platform": "codex",
+          "target_path": "skills/knowledge-updater",
+          "overlay_path": "bundled-skills/knowledge-updater/overlays/codex",
+          "detection_paths": [
+            ".codex",
+            "skills"
+          ],
+          "verification": "SKILL.md exists at skills/knowledge-updater/SKILL.md"
+        },
+        {
+          "platform": "claude",
+          "target_path": ".claude/skills/knowledge-updater",
+          "detection_paths": [
+            ".claude",
+            "CLAUDE.md"
+          ],
+          "verification": "SKILL.md exists at .claude/skills/knowledge-updater/SKILL.md"
+        },
+        {
+          "platform": "codeagent-cli",
+          "target_path": ".cac/skills/knowledge-updater",
+          "detection_paths": [
+            ".cac"
+          ],
+          "verification": "SKILL.md exists at .cac/skills/knowledge-updater/SKILL.md"
+        },
+        {
+          "platform": "opencode",
+          "target_path": ".opencode/skills/knowledge-updater",
+          "detection_paths": [
+            ".opencode",
+            "opencode.json",
+            ".opencode.yaml"
+          ],
+          "verification": "SKILL.md exists at .opencode/skills/knowledge-updater/SKILL.md"
+        }
+      ],
+      "writes": [
+        "skills/knowledge-updater",
+        ".claude/skills/knowledge-updater",
+        ".cac/skills/knowledge-updater",
+        ".opencode/skills/knowledge-updater"
+      ],
+      "safety": {
+        "personal_directory_install_requires_explicit_request": true,
+        "existing_target_requires_user_decision": true
+      }
+    },
+    {
       "name": "ticket-lookup",
       "version": "$AGENT_SEED_VERSION",
       "kind": "multi-platform-direct-skill",
