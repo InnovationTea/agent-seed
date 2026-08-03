@@ -457,6 +457,22 @@ test("release source no longer contains the SessionEnd implementation", async ()
   assert.doesNotMatch(gitignore, /session-summaries/);
 });
 
+test("README documents lightweight knowledge-updater behavior", async () => {
+  const rootDir = process.cwd();
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+
+  assert.match(readme, /knowledge-updater/i);
+  assert.match(readme, /after.*task.*before.*final response/is);
+  assert.match(readme, /AGENTS\.md/);
+  assert.match(readme, /agents\.d\//);
+  assert.match(readme, /current conversation/i);
+  assert.match(readme, /no repository scan/i);
+  assert.match(readme, /legacy.*SessionEnd/is);
+  assert.match(readme, /approval/i);
+  assert.doesNotMatch(readme, /session_end_knowledge_update/);
+  assert.doesNotMatch(readme, /\.agents\/session-summaries/);
+});
+
 test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {
   const rootDir = process.cwd();
   const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));

@@ -53,17 +53,12 @@ guidance:
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
 | `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
 | `.agents/ticket-lookup/sites/` | Shared host-specific ticket navigation, parsing, and API-shape knowledge. | Shared; commit it. Never store ticket content or credentials. |
-| `.agents/session-summaries/` | Candidate knowledge from a session-end hook before owner review. | Local; ignore or archive it. |
 | `AGENTS.md` | Concise project entry point and links to reusable runbooks. | Shared; commit it. |
 | `agents.d/` | Detailed shared runbooks, site knowledge, change recipes, and review checkpoints. | Shared; commit it. |
 
 Platform files such as `CLAUDE.md`, `.claude/settings.json`, `.cac/`,
 `.opencode/`, `opencode.json`, and `.opencode.yaml` are generated or updated
-only for platforms the owner uses. A SessionEnd hook, when supported by that
-platform, is harness configuration rather than an Agent Seed skill feature.
-Claude Code and codeagent-cli use the shared hook templates in
-`skill/references/session-end-hooks.md` and the packaged
-`scripts/session-end-knowledge-update.mjs` helper.
+only for platforms the owner uses.
 
 The effective `knowledge_asset_write_mode` is resolved in this order:
 
@@ -75,12 +70,17 @@ The supported values are `ask-each-change`, `agent-approve`, and
 `full-access`. Even in `full-access`, installs, hook changes, external network
 actions, secrets, and production operations still require separate approval.
 
-For knowledge-only session updates, `session_end_knowledge_update` defaults to
-`true`, but automatic writing is effective only when
-`knowledge_asset_write_mode: "full-access"`. The hook may update only a bounded `Reusable Knowledge`
-section in `AGENTS.md`; detailed material belongs in `agents.d/`. Without that
-explicit opt-in, write a candidate to `.agents/session-summaries/` and wait for
-an explicit Agent Seed invocation and owner confirmation.
+`knowledge-updater` is an approval-gated bundled direct skill for Codex,
+Claude Code, codeagent-cli, and OpenCode. After installation, Agent Seed adds a
+concise `AGENTS.md` rule requiring the main agent to invoke it after every
+completed and verified task, immediately before the final response.
+
+The updater uses only durable facts established in the current conversation
+plus existing `AGENTS.md` and relevant `agents.d/` files. It performs no repository scan, owner interview, transcript read, network action, or child-agent launch. It updates knowledge assets directly with minimal edits and always reports `updated`, `no new reusable knowledge`, `not initialized`, `conflict`, or `update failed`.
+
+Legacy project-local SessionEnd entries that reference the former runner are
+reported during Agent Seed onboarding and removed only after approval.
+Personal or global hook settings are outside the default inspection scope.
 
 For ticket lookup, `allow_prefilled_login_submit` defaults to `true`. When
 enabled, ticket-lookup may click a login button once only when the
