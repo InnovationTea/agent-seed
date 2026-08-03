@@ -25,6 +25,21 @@ report non-current entries, then continue the user's task. Only run its
 scan, automatic upgrade, or an external-plugin directory replacement to the
 generated session preflight.
 
+After an approved project-local `knowledge-updater` install, add this concise
+portable completion rule to `AGENTS.md` and keep the detailed workflow in the
+skill:
+
+> After completing and verifying every task, invoke the installed
+> `knowledge-updater` skill immediately before the final response. Let it use
+> only current-conversation knowledge plus existing `AGENTS.md` and relevant
+> `agents.d/` files; do not let it scan the repository. Append exactly one
+> status returned by the skill, such as `Knowledge assets: updated (...)` or
+> `Knowledge assets: no new reusable knowledge`.
+
+The skill installation and this `AGENTS.md` edit require owner approval. Do
+not add the rule before installation succeeds. Do not generate lifecycle or
+SessionEnd hooks.
+
 Generate `agents.d/` by default for knowledge distillation. Skip it only when the project is small and the owner explicitly wants everything in a concise `AGENTS.md`.
 
 Generate platform-specific files only for platforms the owner uses or explicitly requests, such as `CLAUDE.md`, `GEMINI.md`, `.cac/`, or `.opencode/`. If platforms are unknown, ask before generating platform-specific files.
@@ -280,6 +295,13 @@ For each bundled direct skill, document:
 Install direct bundled skills only for platforms the owner explicitly uses or repository evidence detects. Detection evidence includes owner answers and platform-specific project files such as `.codex`, `skills/`, `.claude`, `CLAUDE.md`, `.cac`, `.opencode`, `opencode.json`, or `.opencode.yaml`. Treat `.cac/` as codeagent-cli (cac), a Claude-compatible directory layout. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. Do not create platform directories for unknown or unused platforms by default.
 
 When `bundled-skills.json` marks `default_install.offer_by_default`, proactively offer to copy the direct skill into the selected project-local platform paths during onboarding. Run the copy only after user approval because it modifies the target project. Do not install bundled direct skills into personal/global skill directories unless the user explicitly asks for personal/global installation.
+
+After an approved `knowledge-updater` install succeeds, also add the recurring
+task-completion rule from Asset Selection to `AGENTS.md`. This is the only
+bundled direct skill whose successful installation adds that completion rule.
+The owner approval covers both the selected project-local skill target and the
+stated `AGENTS.md` edit; it does not authorize platform hooks or other harness
+configuration.
 
 ## Bundled Package Installation
 
