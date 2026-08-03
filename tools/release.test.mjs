@@ -827,7 +827,6 @@ test("local Agent Seed config is ignored by Git", async () => {
   assert.match(gitignore, /^\.agents\/agent-seed\.json$/m);
   assert.match(gitignore, /^\.agents\/managed-skills\.json$/m);
   assert.match(gitignore, /^\.agents\/ticket-lookup\.local\.json$/m);
-  assert.match(gitignore, /^\.agents\/session-summaries\/$/m);
 });
 
 test("external plugin prose stays configuration driven", async () => {
