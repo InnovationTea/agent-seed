@@ -98,6 +98,10 @@ test("inspectManagedUpdates reports new default offers and suppresses the declin
 
     const declined = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
     assert.equal(declined.managed.find((entry) => entry.name === "gitpush").state, "declined-current-version");
+
+    await writeManifest(skillRoot, "v1.2.0");
+    const upgraded = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(upgraded.managed.find((entry) => entry.name === "gitpush").state, "install-available");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -302,14 +306,14 @@ function record(name, version) {
   };
 }
 
-async function writeManifest(skillRoot) {
+async function writeManifest(skillRoot, version = "v1.1.0") {
   await mkdir(skillRoot, { recursive: true });
   await writeFile(
     path.join(skillRoot, "bundled-skills.json"),
     `${JSON.stringify({
       bundled_skills: ["gitpush", "gittag", "gitsync"].map((name) => ({
       name,
-      version: "v1.1.0",
+      version,
       kind: "multi-platform-direct-skill",
       source_path: `bundled-skills/${name}/skill`,
       default_install: { offer_by_default: true },
