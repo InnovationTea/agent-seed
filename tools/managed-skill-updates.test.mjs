@@ -199,10 +199,70 @@ test("managed update CLI check is read-only and apply requires approval", async 
     const { stdout } = await execFileAsync(process.execPath, [script, "check", targetDir, "--platform", "codex", "--skill-root", skillRoot, "--json"]);
 
     assert.equal(JSON.parse(stdout).managed[0].state, "legacy-unmanaged");
+    const declined = await execFileAsync(process.execPath, [
+      script,
+      "decline",
+      targetDir,
+      "--name",
+      "gittag",
+      "--platform",
+      "codex",
+      "--skill-root",
+      skillRoot,
+      "--confirmed",
+      "--json",
+    ]);
+    assert.equal(JSON.parse(declined.stdout).offered_version, "v1.1.0");
     await assert.rejects(
       execFileAsync(process.execPath, [script, "apply", targetDir, "--name", "gitpush", "--platform", "codex", "--skill-root", skillRoot]),
       /--approved/,
     );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("recordInstallOfferDecline requires confirmation and stores the manifest version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-decline-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot);
+    await assert.rejects(
+      manager.recordInstallOfferDecline({ skillRoot, targetDir, name: "gitpush", platform: "codex", confirmed: false }),
+      /explicit owner decline is required/i,
+    );
+    const decline = await manager.recordInstallOfferDecline({
+      skillRoot,
+      targetDir,
+      name: "gitpush",
+      platform: "codex",
+      confirmed: true,
+      now: new Date("2026-08-03T10:00:00.000Z"),
+    });
+    assert.equal(decline.offered_version, "v1.1.0");
+    assert.equal((await manager.readManagedState(targetDir)).schema_version, 2);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("approved installation clears the matching declined offer", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-clear-decline-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot);
+    await mkdir(path.join(skillRoot, "bundled-skills", "gitpush", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "gitpush", "skill", "SKILL.md"), "new skill\n");
+    await manager.recordInstallOfferDecline({ skillRoot, targetDir, name: "gitpush", platform: "codex", confirmed: true });
+    await manager.applyManagedUpdate({ skillRoot, targetDir, name: "gitpush", platform: "codex", approved: true });
+
+    const state = await manager.readManagedState(targetDir);
+    assert.equal(state.managed_skills[0].version, "v1.1.0");
+    assert.deepEqual(state.declined_install_offers, []);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
