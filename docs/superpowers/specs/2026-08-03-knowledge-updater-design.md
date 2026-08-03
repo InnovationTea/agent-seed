@@ -98,10 +98,14 @@ owner-confirmed platforms. The copy remains approval-gated because it changes
 the target repository. Existing-target conflict handling follows the current
 bundled direct-skill policy.
 
-After installation, Agent Seed adds or updates a concise portable rule in
-`AGENTS.md`. The rule references the installed skill instead of embedding the
-full classification workflow. Agent Seed does not add platform SessionEnd
-configuration.
+After installation, Agent Seed adds or updates a concise canonical rule in
+`AGENTS.md`. Codex and OpenCode read it directly. For Claude Code and
+codeagent-cli, Agent Seed adds or preserves a root `CLAUDE.md` import of
+`@AGENTS.md` so the Claude-compatible hosts see the same rule without copying
+the full classification workflow. Agent Seed verifies skill availability and
+instruction visibility independently, allowing a partial or pre-existing
+installation to repair a missing rule or import. Agent Seed does not add
+platform SessionEnd configuration.
 
 ## Input Boundary
 

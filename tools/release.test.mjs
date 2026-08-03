@@ -400,8 +400,18 @@ test("knowledge-updater bundled skill defines recurring bounded knowledge mainte
   assert.match(skill, /do not.*child agent/is);
   assert.match(skill, /smallest coherent edit/i);
   assert.match(skill, /conflict.*not updated/is);
+  for (const sourceLabel of ["Owner-confirmed", "Observed during run", "Repo-confirmed", "Preference", "Risk judgment"]) {
+    assert.match(skill, new RegExp(sourceLabel, "i"));
+  }
+  assert.match(skill, /secrets.*personal data.*private account identifiers.*machine-specific paths/is);
+  assert.match(skill, /raw conversation text.*temporary debugging attempts.*duplicate guidance.*unsupported inference/is);
+  assert.match(skill, /avoid duplication/i);
+  assert.match(skill, /add a concise link.*AGENTS\.md.*index/is);
   assert.match(skill, /Knowledge assets: no new reusable knowledge/);
   assert.match(skill, /Knowledge assets: updated/);
+  assert.match(skill, /Knowledge assets: not initialized/);
+  assert.match(skill, /Knowledge assets: conflict, not updated/);
+  assert.match(skill, /Knowledge assets: update failed/);
 
   const codexPrompt = await readFile(
     path.join(rootDir, "skill", "bundled-skills", "knowledge-updater", "overlays", "codex", "agents", "openai.yaml"),
@@ -426,6 +436,11 @@ test("Agent Seed installs a knowledge-updater completion rule without lifecycle 
 
   assert.match(outputAssets, /Knowledge assets: no new reusable knowledge/);
   assert.match(outputAssets, /Knowledge assets: updated/);
+  assert.match(outputAssets, /Codex.*OpenCode.*AGENTS\.md/is);
+  assert.match(outputAssets, /Claude Code.*codeagent-cli.*CLAUDE\.md/is);
+  assert.match(outputAssets, /skill.*unavailable.*Knowledge assets: update failed/is);
+  assert.match(outputAssets, /installed.*completion rule.*missing.*offer.*repair/is);
+  assert.match(outputAssets, /partial installation/i);
   assert.doesNotMatch(frontmatter, /add newly discovered project knowledge/i);
   assert.doesNotMatch(skill, /Update existing onboarding assets when reusable project knowledge appears during later agent work/i);
   assert.match(skill, /explicitly requests.*Agent Seed.*refresh/is);
@@ -442,6 +457,9 @@ test("Agent Seed treats legacy SessionEnd hooks as approval-gated migration", as
   assert.match(skill, /approval/i);
   assert.match(skill, /must not.*silently/is);
   assert.match(skill, /personal|global/i);
+  assert.match(skill, /parse.*JSON/is);
+  assert.match(skill, /exact matching command/i);
+  assert.match(skill, /preserve unrelated/i);
 });
 
 test("release source no longer contains the SessionEnd implementation", async () => {
