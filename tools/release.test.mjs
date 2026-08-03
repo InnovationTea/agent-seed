@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
-import { mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -438,6 +438,23 @@ test("Agent Seed treats legacy SessionEnd hooks as approval-gated migration", as
   assert.match(skill, /approval/i);
   assert.match(skill, /must not.*silently/is);
   assert.match(skill, /personal|global/i);
+});
+
+test("release source no longer contains the SessionEnd implementation", async () => {
+  const rootDir = process.cwd();
+  const obsoletePaths = [
+    path.join(rootDir, "skill", "scripts", "session-end-knowledge-update.mjs"),
+    path.join(rootDir, "skill", "references", "session-end-hooks.md"),
+  ];
+
+  for (const obsoletePath of obsoletePaths) {
+    await assert.rejects(access(obsoletePath), { code: "ENOENT" });
+  }
+
+  const makefile = await readFile(path.join(rootDir, "Makefile"), "utf8");
+  const gitignore = await readFile(path.join(rootDir, ".gitignore"), "utf8");
+  assert.doesNotMatch(makefile, /session-end-knowledge-update/);
+  assert.doesNotMatch(gitignore, /session-summaries/);
 });
 
 test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {
