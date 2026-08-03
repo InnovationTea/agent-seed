@@ -7,6 +7,68 @@
   },
   "bundled_skills": [
     {
+      "name": "agent-seed-updater",
+      "version": "$AGENT_SEED_VERSION",
+      "kind": "multi-platform-direct-skill",
+      "source_path": "bundled-skills/agent-seed-updater/skill",
+      "purpose": "Check the installed Agent Seed release and its project-local managed skills once per conversation without running onboarding or repository scans.",
+      "default_install": {
+        "mode": "project-local",
+        "offer_by_default": true,
+        "requires_user_approval": true,
+        "install_only_for_detected_or_requested_platforms": true
+      },
+      "platforms": [
+        {
+          "platform": "codex",
+          "target_path": "skills/agent-seed-updater",
+          "overlay_path": "bundled-skills/agent-seed-updater/overlays/codex",
+          "detection_paths": [
+            ".codex",
+            "skills"
+          ],
+          "verification": "SKILL.md exists at skills/agent-seed-updater/SKILL.md"
+        },
+        {
+          "platform": "claude",
+          "target_path": ".claude/skills/agent-seed-updater",
+          "detection_paths": [
+            ".claude",
+            "CLAUDE.md"
+          ],
+          "verification": "SKILL.md exists at .claude/skills/agent-seed-updater/SKILL.md"
+        },
+        {
+          "platform": "codeagent-cli",
+          "target_path": ".cac/skills/agent-seed-updater",
+          "detection_paths": [
+            ".cac"
+          ],
+          "verification": "SKILL.md exists at .cac/skills/agent-seed-updater/SKILL.md"
+        },
+        {
+          "platform": "opencode",
+          "target_path": ".opencode/skills/agent-seed-updater",
+          "detection_paths": [
+            ".opencode",
+            "opencode.json",
+            ".opencode.yaml"
+          ],
+          "verification": "SKILL.md exists at .opencode/skills/agent-seed-updater/SKILL.md"
+        }
+      ],
+      "writes": [
+        "skills/agent-seed-updater",
+        ".claude/skills/agent-seed-updater",
+        ".cac/skills/agent-seed-updater",
+        ".opencode/skills/agent-seed-updater"
+      ],
+      "safety": {
+        "personal_directory_install_requires_explicit_request": true,
+        "existing_target_requires_user_decision": true
+      }
+    },
+    {
       "name": "gitpush",
       "version": "$AGENT_SEED_VERSION",
       "kind": "multi-platform-direct-skill",

@@ -373,6 +373,45 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.doesNotMatch(codexPrompt, /OpenCLI/i);
 });
 
+test("agent-seed-updater bundled skill defines a bounded conversation preflight", async () => {
+  const rootDir = process.cwd();
+  const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
+  const updater = config.bundled_skills.find((entry) => entry.name === "agent-seed-updater");
+
+  assert.ok(updater, "expected agent-seed-updater bundled skill");
+  assert.equal(updater.kind, "multi-platform-direct-skill");
+  assert.equal(updater.source_path, "bundled-skills/agent-seed-updater/skill");
+  assert.equal(updater.default_install.mode, "project-local");
+  assert.equal(updater.default_install.offer_by_default, true);
+  assert.equal(updater.default_install.requires_user_approval, true);
+  assert.equal(updater.default_install.install_only_for_detected_or_requested_platforms, true);
+  assert.deepEqual(updater.platforms.map((entry) => entry.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
+  assert.equal(
+    updater.platforms.find((entry) => entry.platform === "codex").overlay_path,
+    "bundled-skills/agent-seed-updater/overlays/codex",
+  );
+
+  const skill = await readFile(path.join(rootDir, "skill", updater.source_path, "SKILL.md"), "utf8");
+  assert.match(skill, /once.*before the first user task/is);
+  assert.match(skill, /check-agent-seed-updates\.mjs/);
+  assert.match(skill, /decline.*--confirmed/is);
+  assert.match(skill, /apply.*--approved/is);
+  assert.match(skill, /synchronous.*run the preflight again/is);
+  assert.match(skill, /queued.*next conversation/is);
+  assert.match(skill, /do not scan the repository/i);
+  assert.match(skill, /do not invoke Agent Seed onboarding/i);
+  assert.match(skill, /do not update knowledge assets/i);
+  assert.match(skill, /must not block the user.*task/is);
+
+  const codexPrompt = await readFile(
+    path.join(rootDir, "skill", "bundled-skills", "agent-seed-updater", "overlays", "codex", "agents", "openai.yaml"),
+    "utf8",
+  );
+  assert.match(codexPrompt, /Agent Seed Updater/);
+  assert.match(codexPrompt, /before the first project task/i);
+  assert.match(codexPrompt, /do not run Agent Seed onboarding/i);
+});
+
 test("knowledge-updater bundled skill defines recurring bounded knowledge maintenance", async () => {
   const rootDir = process.cwd();
   const config = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
