@@ -411,49 +411,33 @@ test("knowledge-updater bundled skill defines recurring bounded knowledge mainte
   assert.match(codexPrompt, /before.*final response/i);
 });
 
-test("Agent Seed documents controlled knowledge-only session updates and project configuration boundaries", async () => {
+test("Agent Seed installs a knowledge-updater completion rule without lifecycle hooks", async () => {
   const rootDir = process.cwd();
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
-  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
 
-  assert.match(skill, /knowledge-only/i);
-  assert.match(skill, /"session_end_knowledge_update"\s*:\s*true/);
-  assert.match(skill, /AGENTS\.md/);
-  assert.match(skill, /session[- ]summaries/i);
-  assert.match(skill, /must not change source code/i);
-  assert.match(readme, /agent-seed\.json/);
-  assert.match(readme, /managed-skills\.json/);
-  assert.match(readme, /ticket-lookup\.json/);
-  assert.match(readme, /ticket-lookup\.local\.json/);
-  assert.match(readme, /ticket-lookup\/sites/);
-  assert.match(readme, /AGENTS\.md/);
-  assert.match(readme, /agents\.d/);
-  assert.match(readme, /shared|committed/i);
-  assert.match(readme, /local|ignored/i);
+  for (const content of [skill, outputAssets]) {
+    assert.match(content, /knowledge-updater/i);
+    assert.match(content, /after.*task.*before.*final response/is);
+    assert.match(content, /AGENTS\.md/);
+    assert.match(content, /owner approval|user approval/i);
+  }
+
+  assert.match(outputAssets, /Knowledge assets: no new reusable knowledge/);
+  assert.match(outputAssets, /Knowledge assets: updated/);
 });
 
-test("Agent Seed ships Claude-compatible session-end hook guidance", async () => {
+test("Agent Seed treats legacy SessionEnd hooks as approval-gated migration", async () => {
   const rootDir = process.cwd();
-  const scriptPath = path.join(rootDir, "skill", "scripts", "session-end-knowledge-update.mjs");
-  const hookReferencePath = path.join(rootDir, "skill", "references", "session-end-hooks.md");
   const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
-  const hookReference = await readFile(hookReferencePath, "utf8");
 
-  await stat(scriptPath);
-  assert.match(skill, /Claude Code/i);
-  assert.match(skill, /codeagent-cli/i);
-  assert.match(skill, /session-end-hooks\.md/);
-  assert.match(hookReference, /\.claude\/settings\.json/);
-  assert.match(hookReference, /\.cac\/settings\.json/);
-  assert.match(hookReference, /SessionEnd/);
-  assert.match(hookReference, /session-end-knowledge-update\.mjs/);
-  assert.match(hookReference, /AGENT_SEED_SESSION_END_CHILD/);
-  assert.match(hookReference, /full-access/i);
-  const jsonBlocks = [...hookReference.matchAll(/```json\r?\n([\s\S]*?)\r?\n```/g)].map((match) => match[1]);
-  assert.equal(jsonBlocks.length, 3);
-  for (const block of jsonBlocks) {
-    assert.doesNotThrow(() => JSON.parse(block));
-  }
+  assert.match(skill, /legacy/i);
+  assert.match(skill, /session-end-knowledge-update\.mjs/);
+  assert.match(skill, /\.claude\/settings\.json/);
+  assert.match(skill, /\.cac\/settings\.json/);
+  assert.match(skill, /approval/i);
+  assert.match(skill, /must not.*silently/is);
+  assert.match(skill, /personal|global/i);
 });
 
 test("Codex bundled direct skill detection does not treat AGENTS.md as a standalone platform signal", async () => {

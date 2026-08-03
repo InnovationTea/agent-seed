@@ -95,39 +95,29 @@ and ownership when useful, but use the platform-native update action after
 separate owner approval. Never copy, delete, or replace an external plugin
 directory.
 
-## Knowledge-Only Session Updates
+## Incremental Knowledge Updater
 
-Agent Seed is normally triggered explicitly. It does not run a model at every
-session end. `session_end_knowledge_update` defaults to `true`, but automatic
-writing is effective only when the write mode is `full-access` and a
-platform-specific session hook is available. The target project's
-`.agents/agent-seed.json` may make that policy explicit:
+Agent Seed performs initial repository scanning and owner interviews. Routine
+incremental maintenance belongs to the bundled `knowledge-updater` skill.
 
-```json
-{
-  "session_end_knowledge_update": true,
-  "knowledge_asset_write_mode": "full-access"
-}
-```
+Offer its project-local installation for every detected, requested, or
+owner-confirmed platform according to `bundled-skills.json`. Installation and
+the corresponding `AGENTS.md` edit require owner approval. After an approved
+install, add a concise project rule requiring the main agent to invoke
+`knowledge-updater` after completing and verifying every task, immediately
+before its final response, and to append exactly one returned knowledge-asset
+status.
 
-When enabled, the hook may update only a bounded `Reusable Knowledge` section
-in `AGENTS.md`. The update must contain durable, project-reusable rules and
-must not change source code, tests, dependencies, hooks, platform settings, or
-external integrations. It must never copy credentials, personal data,
-one-off incident chatter, or temporary debugging details. Detailed knowledge
-belongs in focused `agents.d/` runbooks, with `AGENTS.md` acting as the concise
-entry point.
+Do not run Agent Seed, scan the repository, interview the owner, start a child
+agent, or configure a lifecycle hook for routine updates.
 
-If the platform cannot provide a reliable session-end hook or the write mode is
-not `full-access`, generate a candidate under `.agents/session-summaries/` and
-wait for an explicit Agent Seed invocation and owner confirmation before
-updating `AGENTS.md` or `agents.d/`. Session-end hooks remain platform and
-harness configuration; Agent Seed must not install or modify them implicitly.
-
-For Claude Code and codeagent-cli (cac), use the shared configuration and
-script templates in `references/session-end-hooks.md`. The two platforms use
-the same hook schema; only the settings directory and CLI platform argument
-differ.
+During onboarding, inspect only project-local `.claude/settings.json` and
+`.cac/settings.json` files already in the target-root evidence set for legacy
+commands that reference `session-end-knowledge-update.mjs`. Report the exact
+project file and offer to remove the entry. Removal requires explicit approval;
+you must not silently edit hook settings and must not inspect personal or
+global settings without separate authorization. Existing legacy local data is
+left untouched.
 
 ## Activation Preflight
 
@@ -187,7 +177,6 @@ Read only the reference file needed for the current phase:
 - For uncommon, private, vendor, internally named, or preset-supported frameworks, or when the user mentions a framework the model may not know well, read `references/framework-fingerprints.md`. If `framework-knowledge.json` contains a matching framework entry or the target project provides project-local framework knowledge, load only the matching framework knowledge files before interviewing the owner.
 - For `AGENTS.md`, `agents.d/`, `CLAUDE.md`, project-specific skill structures, resource directories, bundled direct skills, bundled packages, platform skills, and default project-local installation, read `references/output-assets.md` before generating files.
 - When the user adds knowledge after initial onboarding or asks to update existing instructions, read `references/update-existing-assets.md`.
-- When configuring Claude Code or codeagent-cli session-end knowledge updates, read `references/session-end-hooks.md`.
 - Before claiming the project is agent-ready or automation-ready, read `references/fresh-agent-dry-run.md`.
 
 Do not duplicate reference content in generated files. Put the concise entry point in `AGENTS.md` and route detailed runbooks into focused `agents.d/` files.
