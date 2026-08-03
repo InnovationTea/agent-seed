@@ -8,9 +8,12 @@ self-update behavior, detects updates and newly offered Agent Seed-managed
 skills without invoking Agent Seed onboarding, and keeps routine startup work
 separate from repository scanning and knowledge distillation.
 
-The startup check is read-only except when the owner explicitly approves an
-Agent Seed update, a managed skill installation or update, or records a
-version-specific decline of a new skill offer.
+The startup check does not modify project skills, packages, or knowledge
+assets unless the owner explicitly approves an Agent Seed update, a managed
+skill installation or update, or a version-specific decline of a new skill
+offer. The existing self-update check may continue updating its ignored local
+cache, and the check records the validated Agent Seed installation root in the
+same local operator-state file.
 
 ## Responsibility Boundaries
 
