@@ -1,0 +1,4 @@
+interface:
+  display_name: "Agent Seed Updater"
+  short_description: "Check Agent Seed and managed skill updates."
+  default_prompt: "Use $agent-seed-updater once before the first project task, report actionable updates without blocking the task, and do not run Agent Seed onboarding."
