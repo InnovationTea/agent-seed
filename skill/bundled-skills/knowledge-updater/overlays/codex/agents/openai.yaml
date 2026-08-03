@@ -1,0 +1,4 @@
+interface:
+  display_name: "Knowledge Updater"
+  short_description: "Preserve reusable project knowledge after each task."
+  default_prompt: "Use $knowledge-updater after completing the task and before the final response, then append its knowledge-asset status."
