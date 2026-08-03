@@ -1,0 +1,124 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import test from "node:test";
+import { promisify } from "node:util";
+
+import { runAgentSeedPreflight } from "../skill/scripts/check-agent-seed-updates.mjs";
+
+const execFileAsync = promisify(execFile);
+
+test("preflight combines the existing self-update and managed checks", async () => {
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    runSelfUpdate: async () => ({ hasUpdate: true, currentVersion: "v1.0.0", latestVersion: "v1.1.0", cached: true }),
+    inspectManaged: async () => ({ managed: [{ name: "gitpush", state: "update-available" }], external: [] }),
+  });
+
+  assert.deepEqual(result.agent_seed, {
+    state: "update-available",
+    current_version: "v1.0.0",
+    available_version: "v1.1.0",
+    cached: true,
+  });
+  assert.equal(result.managed[0].name, "gitpush");
+  assert.deepEqual(result.errors, []);
+});
+
+test("preflight continues managed inspection when self-update check fails", async () => {
+  let managedCalled = false;
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    runSelfUpdate: async () => { throw new Error("network unavailable"); },
+    inspectManaged: async () => { managedCalled = true; return { managed: [], external: [] }; },
+  });
+
+  assert.equal(managedCalled, true);
+  assert.equal(result.agent_seed.state, "unknown");
+  assert.deepEqual(result.errors, [{ source: "agent-seed", message: "network unavailable" }]);
+});
+
+test("preflight returns managed errors without failing the caller", async () => {
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    runSelfUpdate: async () => ({ hasUpdate: false, currentVersion: "v1.1.0", latestVersion: "v1.1.0" }),
+    inspectManaged: async () => { throw new Error("invalid bundled-skills.json"); },
+  });
+
+  assert.deepEqual(result.managed, []);
+  assert.deepEqual(result.errors, [{ source: "managed-skills", message: "invalid bundled-skills.json" }]);
+});
+
+test("preflight CLI emits combined JSON for a cached self-update result", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-preflight-cli-"));
+  const skillRoot = path.join(rootDir, "agent-seed");
+  const targetDir = path.join(rootDir, "project");
+
+  try {
+    await writeFixture({ skillRoot, targetDir, selfUpdater: 'console.log(JSON.stringify({ hasUpdate: false, currentVersion: "v1.1.0", latestVersion: "v1.1.0", cached: true }));\n' });
+    const report = await runCli({ skillRoot, targetDir });
+
+    assert.equal(report.agent_seed.state, "current");
+    assert.equal(report.agent_seed.cached, true);
+    assert.equal(report.managed[0].state, "install-available");
+    assert.deepEqual(report.errors, []);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("preflight CLI preserves managed results when self-update exits nonzero", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-preflight-cli-failure-"));
+  const skillRoot = path.join(rootDir, "agent-seed");
+  const targetDir = path.join(rootDir, "project");
+
+  try {
+    await writeFixture({ skillRoot, targetDir, selfUpdater: 'console.error("network unavailable"); process.exitCode = 1;\n' });
+    const report = await runCli({ skillRoot, targetDir });
+
+    assert.equal(report.agent_seed.state, "unknown");
+    assert.equal(report.managed[0].state, "install-available");
+    assert.equal(report.errors[0].source, "agent-seed");
+    assert.match(report.errors[0].message, /network unavailable/);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+async function writeFixture({ skillRoot, targetDir, selfUpdater }) {
+  await mkdir(path.join(skillRoot, "scripts"), { recursive: true });
+  await mkdir(targetDir, { recursive: true });
+  await writeFile(path.join(skillRoot, "scripts", "update-agent-seed.mjs"), selfUpdater);
+  await writeFile(path.join(skillRoot, "bundled-skills.json"), `${JSON.stringify({
+    bundled_skills: [{
+      name: "alpha",
+      version: "v1.1.0",
+      source_path: "bundled-skills/alpha/skill",
+      default_install: { offer_by_default: true },
+      platforms: [{ platform: "codex", target_path: "skills/alpha" }],
+    }],
+  })}\n`);
+  await writeFile(path.join(skillRoot, "bundled-packages.json"), '{"bundled_packages":[]}\n');
+}
+
+async function runCli({ skillRoot, targetDir }) {
+  const script = path.join(process.cwd(), "skill", "scripts", "check-agent-seed-updates.mjs");
+  const { stdout } = await execFileAsync(process.execPath, [
+    script,
+    targetDir,
+    "--platform",
+    "codex",
+    "--skill-root",
+    skillRoot,
+    "--json",
+  ]);
+  return JSON.parse(stdout);
+}
