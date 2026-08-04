@@ -68,8 +68,13 @@ current user request -> shared .agents/agent-seed.json -> full-access
 ```
 
 The supported values are `ask-each-change`, `agent-approve`, and
-`full-access`. Even in `full-access`, installs, hook changes, external network
-actions, secrets, and production operations still require separate approval.
+`full-access`. In `ask-each-change` and `agent-approve`, installs, install-time
+network access, and personal or global writes require separate approval. In
+`full-access`, applicable default installs and verification run without
+approval; authorization includes required network access, personal or global
+writes, and every manifest-declared side effect, including hooks. Standalone
+hook changes, secrets, production actions, destructive actions, and unresolved
+replacement or merge conflicts still require approval in every mode.
 
 The first split-capable Agent Seed release migrates a legacy unified
 `.agents/agent-seed.json` into shared and local files, preserves unknown legacy
@@ -82,19 +87,19 @@ Migration validates known legacy field shapes before writing. Unsupported or
 malformed state is left unchanged and reported instead of being partially
 rewritten.
 
-`agent-seed-updater` is an approval-gated bundled direct skill for Codex,
-Claude Code, codeagent-cli, and OpenCode. Agent Seed installs its canonical
-`AGENTS.md` rule so it runs exactly once before the first project task in each
-new conversation. It calls `check-agent-seed-updates.mjs`, which combines the
+`agent-seed-updater` is a mode-aware bundled direct skill for Codex, Claude
+Code, codeagent-cli, and OpenCode. Agent Seed installs its canonical `AGENTS.md`
+rule so it runs exactly once before the first project task in each new
+conversation. It calls `check-agent-seed-updates.mjs`, which combines the
 existing cached Agent Seed self-update check with shared desired-state and
-target installation checks. It does not run Agent Seed onboarding or perform a repository
-scan. Codex and OpenCode read `AGENTS.md` directly; Claude Code and
+target installation checks. It does not run Agent Seed onboarding or perform a
+repository scan. Codex and OpenCode read `AGENTS.md` directly; Claude Code and
 codeagent-cli use the root `CLAUDE.md` import.
 
-`knowledge-updater` is an approval-gated bundled direct skill for Codex,
-Claude Code, codeagent-cli, and OpenCode. After installation, Agent Seed adds a
-concise canonical `AGENTS.md` rule requiring the main agent to invoke it after
-every completed and verified task, immediately before the final response.
+`knowledge-updater` is a mode-aware bundled direct skill for Codex, Claude Code,
+codeagent-cli, and OpenCode. After installation, Agent Seed adds a concise
+canonical `AGENTS.md` rule requiring the main agent to invoke it after every
+completed and verified task, immediately before the final response.
 Codex and OpenCode read that rule directly; Claude Code and codeagent-cli use a
 root `CLAUDE.md` import of `@AGENTS.md`. Skill availability and instruction
 visibility are verified independently so partial or pre-existing installs can
@@ -293,7 +298,7 @@ after each completed task and maintains only durable project guidance.
 - Bundled asset: `skill/packages/git-code-tracker/ai-commit-statistic-skill-v1.0.4.zip`
 - Project-local installer: `node skill/scripts/install-git-code-tracker.mjs <target-project>`
 
-Do not run the installer without explicit approval. It automatically detects one supported platform from project or runtime evidence, copies only that platform's `ai-code-tracker` skill from the release asset, then runs the copied skill's `install.js`. For a new project, Agent Seed configures `.ai-tracking/config.json` with `uploadUrl` set to `http://7.213.196.158:8088/v1/records`; an existing non-empty project URL is preserved. The copied tracker sends records to that address on future `git push` operations and queues failed batches in `.ai-tracking/upload-outbox.json`. It may also write `.opencode/`, `.claude/`, `.cac/`, `.git/hooks`, `.gitignore`, and `AGENTS.md` in the target project. Use `--platform all` only when the owner explicitly requests every supported integration.
+Apply the resolved mode before running the installer. In `full-access`, run it without separate approval after its platform gate passes; `.git/hooks` and the other paths in `default_install.writes` are declared install side effects and are included in that authorization. In `ask-each-change` and `agent-approve`, disclose the same writes and network effect and get approval first. The installer detects one supported platform from project or runtime evidence, copies only that platform's `ai-code-tracker` skill from the release asset, then runs the copied skill's `install.js`. For a new project, Agent Seed configures `.ai-tracking/config.json` with `uploadUrl` set to `http://7.213.196.158:8088/v1/records`; an existing non-empty project URL is preserved. The copied tracker sends records to that address on future `git push` operations and queues failed batches in `.ai-tracking/upload-outbox.json`. It may also write `.opencode/`, `.claude/`, `.cac/`, `.git/hooks`, `.gitignore`, and `AGENTS.md` in the target project. Use `--platform all` only when the owner explicitly requests every supported integration.
 
 ## Development Notes
 

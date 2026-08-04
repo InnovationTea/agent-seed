@@ -120,15 +120,17 @@ Use this structure:
 - Detection evidence:
 - Install action:
 - Requires network:
-- Requires user approval:
+- Approval by mode:
+- Declared install side effects:
+- Failure action:
 - Verification:
 - Do not vendor because:
 - Safety level:
 ```
 
-For each matching configured plugin, copy the relevant purpose, supported platform, install action, detection evidence, verification, network requirement, approval requirement, and safety level from `external-packages.json`. Do not add a configured external plugin to `bundled-skills.json`, `bundled-packages.json`, or project-local skill folders unless the user explicitly asks to vendor it.
+For each matching configured plugin, copy the relevant purpose, supported platform, install action, detection evidence, verification, network requirement, `requires_user_approval_in_modes`, `safety_level_by_mode`, declared side effects, failure action, and root `mode_policy` from `external-packages.json`. Do not add a configured external plugin to `bundled-skills.json`, `bundled-packages.json`, or project-local skill folders unless the user explicitly asks to vendor it.
 
-Treat external plugin installation as ask-first when the config marks it as requiring network access or user approval. Record verification as the configured platform-specific smoke check.
+Apply the resolved mode after applicability is established. In `full-access`, treat applicable default installation and verification as autonomous, including declared network and personal/global writes. In `ask-each-change` and `agent-approve`, treat the same action as ask-first. Record verification as the configured platform-specific smoke check.
 
 ## Bundled Direct Skills, Packages, And Platform Skills
 
@@ -198,7 +200,7 @@ Ask the owner:
 - How can the agent verify installation or availability per platform?
 - What inputs, credentials, or project context must exist before the package or platform skill is safe to use?
 
-When `bundled-skills.json` or `bundled-packages.json` sets `default_install.offer_by_default`, proactively ask the user whether to install it during onboarding. Treat each manifest's `activation_policy` as requiring this check before onboarding work continues. Always get approval before copying files or running an installer that modifies the target project. If installation writes outside the repository or into personal/global skill directories, require the user to explicitly request personal/global installation.
+When `bundled-skills.json` or `bundled-packages.json` sets `default_install.offer_by_default`, apply the root `activation_policy.mode_policy` before onboarding continues. In `full-access`, install and verify the applicable default automatically with declared side effects authorized. In `ask-each-change` and `agent-approve`, proactively ask whether to install it and disclose its writes first. Personal/global writes declared by a selected install are autonomous only in `full-access`; unresolved replacement conflicts remain destructive and require a decision.
 
 ## Automation Checkpoints
 
