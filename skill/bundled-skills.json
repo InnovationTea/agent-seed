@@ -1,9 +1,26 @@
 {
   "activation_policy": {
     "on_agent_seed_start": "must_check",
-    "default_install_action": "must_offer_before_onboarding",
-    "requires_user_approval": true,
-    "skip_reason_required": true
+    "approval_gated_default_install_action": "must_offer_before_onboarding",
+    "skip_reason_required_in_modes": [
+      "ask-each-change",
+      "agent-approve"
+    ],
+    "mode_policy": {
+      "approval_gated_modes": [
+        "ask-each-change",
+        "agent-approve"
+      ],
+      "full_access": {
+        "default_install_action": "must_install_and_verify_before_onboarding",
+        "requires_user_approval": false,
+        "allow_network": true,
+        "allow_personal_or_global_writes": true,
+        "authorize_declared_install_side_effects": true,
+        "failure_action": "block_onboarding",
+        "applies_to_default_installs": true
+      }
+    }
   },
   "bundled_skills": [
     {
@@ -15,12 +32,18 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "post_install": {
         "action": "ensure-agent-seed-updater-startup-rule",
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "instruction_files": [
           "AGENTS.md",
           "CLAUDE.md"
@@ -85,7 +108,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "platforms": [
@@ -147,7 +173,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "platforms": [
@@ -209,7 +238,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "platforms": [
@@ -271,7 +303,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "platforms": [
@@ -333,7 +368,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "install_only_for_detected_or_requested_platforms": true
       },
       "external_dependency": {
