@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { readAgentSeedFiles, writeLocalAgentSeedState } from "./agent-seed-config.mjs";
 import { installGitCodeTracker } from "./install-git-code-tracker.mjs";
 
 const STATE_DIRECTORY = ".agents";
@@ -16,27 +17,67 @@ const EMPTY_STATE = Object.freeze({
 
 export async function readManagedState(targetDir) {
   const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
+  let shared;
   try {
-    return normalizeState(JSON.parse(await readFile(statePath, "utf8")), statePath);
+    shared = normalizeState(JSON.parse(await readFile(statePath, "utf8")), statePath);
   } catch (error) {
-    if (error.code === "ENOENT") return structuredClone(EMPTY_STATE);
-    throw error;
+    if (error.code === "ENOENT") shared = structuredClone(EMPTY_STATE);
+    else throw error;
   }
+  const local = (await readAgentSeedFiles(targetDir)).local.managed_skills || {};
+  return {
+    ...shared,
+    declined_install_offers: deduplicate([
+      ...shared.declined_install_offers,
+      ...(Array.isArray(local.declined_install_offers) ? local.declined_install_offers : []),
+    ]),
+    external_integrations: deduplicate([
+      ...shared.external_integrations,
+      ...(Array.isArray(local.external_integrations) ? local.external_integrations : []),
+    ]),
+  };
 }
 
 export async function writeManagedState(targetDir, state) {
-  const stateDir = path.join(path.resolve(targetDir), STATE_DIRECTORY);
-  const statePath = path.join(stateDir, STATE_FILE);
+  const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
   const tempPath = `${statePath}.${process.pid}.${Date.now()}.tmp`;
   const normalizedState = normalizeState(state, statePath);
-  await mkdir(stateDir, { recursive: true });
+  const sharedState = {
+    schema_version: 2,
+    managed_skills: normalizedState.managed_skills,
+    external_integrations: [],
+  };
+  await mkdir(path.dirname(statePath), { recursive: true });
   try {
-    await writeFile(tempPath, `${JSON.stringify(normalizedState, null, 2)}\n`, "utf8");
+    await writeFile(tempPath, `${JSON.stringify(sharedState, null, 2)}\n`, "utf8");
     await rename(tempPath, statePath);
   } finally {
     await rm(tempPath, { force: true });
   }
-  return normalizedState;
+  return { ...normalizedState, external_integrations: [] };
+}
+
+async function writeLocalManagedState(targetDir, patch) {
+  const state = await readManagedState(targetDir);
+  const local = {
+    declined_install_offers: state.declined_install_offers,
+    external_integrations: state.external_integrations,
+    ...patch,
+  };
+  return writeLocalAgentSeedState({
+    targetDir,
+    patch: { managed_skills: local },
+  });
+}
+
+function deduplicate(entries) {
+  const seen = new Set();
+  return entries.filter((entry) => {
+    const key = JSON.stringify(entry);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function inspectManagedUpdates({ skillRoot, targetDir, platform }) {
@@ -178,7 +219,8 @@ export async function recordExternalIntegration({ targetDir, name, platform, own
   const state = await readManagedState(targetDir);
   const record = { name, platform, ownership, version };
   const retained = state.external_integrations.filter((entry) => entry.name !== name || entry.platform !== platform);
-  return writeManagedState(targetDir, { ...state, external_integrations: [...retained, record] });
+  await writeLocalManagedState(targetDir, { external_integrations: [...retained, record] });
+  return readManagedState(targetDir);
 }
 
 export async function recordInstallOfferDecline({ skillRoot, targetDir, name, platform, confirmed, now = new Date() }) {
@@ -197,7 +239,7 @@ export async function recordInstallOfferDecline({ skillRoot, targetDir, name, pl
   const retained = state.declined_install_offers.filter((candidate) =>
     candidate.name !== entry.name || candidate.kind !== entry.kind || candidate.platform !== platform
   );
-  await writeManagedState(targetDir, { ...state, declined_install_offers: [...retained, decline] });
+  await writeLocalManagedState(targetDir, { declined_install_offers: [...retained, decline] });
   return decline;
 }
 
@@ -300,25 +342,28 @@ async function recordManagedInstall(targetDir, record) {
   const retainedDeclines = state.declined_install_offers.filter((entry) =>
     entry.name !== record.name || entry.kind !== record.kind || entry.platform !== record.platform
   );
-  return writeManagedState(targetDir, {
+  const result = await writeManagedState(targetDir, {
     ...state,
     managed_skills: [...retained, record],
+  });
+  await writeLocalManagedState(targetDir, {
     declined_install_offers: retainedDeclines,
   });
+  return result;
 }
 
 function normalizeState(state, statePath) {
   if (!state || Array.isArray(state) || typeof state !== "object") throw new Error(`Invalid managed skill state: ${statePath}`);
   if (![1, 2].includes(state.schema_version)
     || !Array.isArray(state.managed_skills)
-    || !Array.isArray(state.external_integrations)
-    || (state.schema_version === 2 && !Array.isArray(state.declined_install_offers))) {
+    || (state.external_integrations !== undefined && !Array.isArray(state.external_integrations))
+    || (state.declined_install_offers !== undefined && !Array.isArray(state.declined_install_offers))) {
     throw new Error(`Invalid managed skill state: ${statePath}`);
   }
   return {
     schema_version: 2,
     managed_skills: state.managed_skills,
-    external_integrations: state.external_integrations,
+    external_integrations: state.external_integrations || [],
     declined_install_offers: state.declined_install_offers || [],
   };
 }

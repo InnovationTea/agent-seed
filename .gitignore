@@ -1,8 +1,7 @@
 .worktrees/
 .claude
 outputs/
-.agents/agent-seed.json
-.agents/managed-skills.json
+.agents/agent-seed.local.json
 .agents/ticket-lookup.local.json
 .ai-tracking/pending-lines.json
 .ai-tracking/pending-commit.json
