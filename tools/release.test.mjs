@@ -1004,6 +1004,28 @@ test("knowledge asset write mode is persistent and documented across write workf
   assert.match(skill, /current user request wins/i);
 });
 
+test("full-access install policy is consistent across public and internal guidance", async () => {
+  const rootDir = process.cwd();
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+  const updateExisting = await readFile(path.join(rootDir, "skill", "references", "update-existing-assets.md"), "utf8");
+  const knowledgeDistillation = await readFile(path.join(rootDir, "skill", "references", "knowledge-distillation.md"), "utf8");
+  const dryRun = await readFile(path.join(rootDir, "skill", "references", "fresh-agent-dry-run.md"), "utf8");
+
+  for (const [name, content] of Object.entries({ readme, outputAssets, updateExisting })) {
+    assert.match(content, /full-access.*install.*without.*approval/is, name);
+    assert.match(content, /network.*personal.*global/is, name);
+    assert.match(content, /declared.*side effects.*hooks/is, name);
+    assert.match(content, /standalone\s+hook.*secrets.*production.*destructive/is, name);
+  }
+
+  assert.match(knowledgeDistillation, /approval.*mode/i);
+  assert.match(knowledgeDistillation, /full-access.*autonomous/is);
+  assert.match(dryRun, /resolved.*mode/i);
+  assert.match(dryRun, /full-access.*install.*verify/is);
+  assert.match(dryRun, /failure.*block.*onboarding/is);
+});
+
 test("local Agent Seed config is ignored by Git", async () => {
   const gitignore = await readFile(path.join(process.cwd(), ".gitignore"), "utf8");
 

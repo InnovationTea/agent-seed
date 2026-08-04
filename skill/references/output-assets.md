@@ -94,7 +94,7 @@ Supported values:
 
 - `ask-each-change`: Ask before each knowledge asset file creation or edit. State the target file, reason, and intended change.
 - `agent-approve`: After the owner confirms the onboarding/update scope, create and edit in-scope knowledge assets autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
-- `full-access`: Create, update, and reorganize knowledge assets directly inside the target project, then report the diff and verification. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
+- `full-access`: Create, update, and reorganize knowledge assets and run applicable default installs and verification without approval. Install authorization includes required network access, personal or global writes, and every manifest-declared side effect, including hooks. Report the diff and verification. Standalone hook changes, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require approval.
 
 The current user request wins over the shared project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the shared config is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
@@ -304,11 +304,11 @@ When recommending external plugins in `AGENTS.md`, `agents.d/tooling.md`, or a g
 - Platforms it applies to.
 - How to detect whether it is already available.
 - The platform-native install action.
-- Whether installation requires network access and user approval.
+- Required network access, approval by mode, and declared install side effects.
 - Verification after installation.
 - A clear note that the plugin is recommended externally and is not vendored into `bundled-skills.json`, `bundled-packages.json`, or project-local skill folders.
 
-Use the configured `install_action`, `detection_evidence`, `verification`, and `default_recommendation` fields for platform-native instructions. Do not run an install action automatically when the config marks it as requiring network access or user approval.
+Use the configured `install_action`, `detection_evidence`, `verification`, `default_recommendation`, and root `activation_policy.mode_policy` fields for platform-native instructions. In `full-access`, run applicable default installs and verification without a separate prompt, including required network, personal/global writes, and declared install side effects. In `ask-each-change` and `agent-approve`, present the action and side effects before asking. Network access is not an independent approval gate when it is a declared part of a `full-access` install.
 
 ## Bundled Direct Skill Installation
 
@@ -317,7 +317,7 @@ When generating a project-specific skill that contains copy-only bundled skills,
 For each bundled direct skill, document:
 
 - Skill name, version, purpose, source path, and supported platforms.
-- Default install mode, whether to offer by default, and whether user approval is required.
+- Default install mode, whether to offer by default, and approval behavior by mode.
 - Platform target paths, overlay paths, and detection evidence for Codex, Claude Code, codeagent-cli (cac), OpenCode, or other supported tools.
 - Exact copy behavior: copy the `source_path` directory into each selected platform target path, then apply the platform overlay if one is configured.
 - Existing target behavior: stop and ask the user whether to skip, replace, or manually merge when the target path already exists.
@@ -326,19 +326,19 @@ For each bundled direct skill, document:
 
 Install direct bundled skills only for platforms the owner explicitly uses or repository evidence detects. Detection evidence includes owner answers and platform-specific project files such as `.codex`, `skills/`, `.claude`, `CLAUDE.md`, `.cac`, `.opencode`, `opencode.json`, or `.opencode.yaml`. Treat `.cac/` as codeagent-cli (cac), a Claude-compatible directory layout. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. Do not create platform directories for unknown or unused platforms by default.
 
-When `bundled-skills.json` marks `default_install.offer_by_default`, proactively offer to copy the direct skill into the selected project-local platform paths during onboarding. Run the copy only after user approval because it modifies the target project. Do not install bundled direct skills into personal/global skill directories unless the user explicitly asks for personal/global installation.
+When `bundled-skills.json` marks `default_install.offer_by_default`, apply the resolved mode after selecting the project platforms. In `full-access`, copy and verify the applicable default without a separate prompt. In `ask-each-change` and `agent-approve`, proactively offer it and run the copy only after approval. A selected personal/global target is authorized in `full-access`; the approval-gated modes require explicit approval for that target.
 
-After an approved `knowledge-updater` install succeeds, also add the recurring
+After an authorized `knowledge-updater` install succeeds, also add the recurring
 task-completion rule from Asset Selection to `AGENTS.md`. This is the only
 bundled direct skill whose successful installation adds that completion rule.
 For Claude Code and codeagent-cli, also ensure `CLAUDE.md` imports
-`@AGENTS.md`. The owner approval covers the selected project-local skill target
-and these stated instruction edits; it does not authorize platform hooks or
-other harness configuration. Check the skill target and instruction surface
+`@AGENTS.md`. These instruction edits are declared post-install side effects and
+share the install authorization. Check the skill target and instruction surface
 separately on every onboarding run so a pre-existing or partial installation
-can repair its missing completion rule without replacing the skill.
+can repair its missing completion rule without replacing the skill. Undeclared
+standalone hooks or other harness configuration remain separate actions.
 
-After an approved `agent-seed-updater` install succeeds, add the startup rule
+After an authorized `agent-seed-updater` install succeeds, add the startup rule
 from Asset Selection. This is the only bundled direct skill whose successful
 installation adds the once-per-conversation startup rule. Check the skill
 target and instruction surface independently so partial installations can be
@@ -361,8 +361,8 @@ For each bundled package, document:
 - Verification step after install for each platform skill.
 - Safety level: autonomous, ask first, or never install automatically.
 
-When `bundled-packages.json` marks `default_install.offer_by_default` for a project-local package install, proactively offer to run the project-local installer during onboarding. Run it only after user approval because it may modify the target project. Do not install bundled platform skills into personal/global skill directories unless the user explicitly asks for personal/global installation.
+When `bundled-packages.json` marks `default_install.offer_by_default`, apply the resolved mode after its applicability and platform gates pass. In `full-access`, run and verify the installer without a separate prompt; authorization includes every path and side effect declared by the manifest. In `ask-each-change` and `agent-approve`, disclose those effects and run only after approval. A selected personal/global target is authorized in `full-access`; the approval-gated modes require explicit approval for that target.
 
 If the platform supports direct repository-local skill loading, document that path instead of copying files.
 
-The bundled `git-code-tracker` entry is pinned to `v1.0.4` / `8cb0855155c8ad7483232e9d5679ee19d8714df8`. Its release asset is `packages/git-code-tracker/ai-commit-statistic-skill-v1.0.4.zip`; it contains `.opencode/skills/ai-code-tracker`, `.claude/skills/ai-code-tracker`, and `.cac/skills/ai-code-tracker`. Prefer `node scripts/install-git-code-tracker.mjs <target-project>` over duplicating manual copy details. The installer detects one platform from explicit request, runtime evidence, or target-project markers, copies only that asset entry, runs the copied skill's `install.js`, applies the Agent Seed default `uploadUrl` of `http://7.213.196.158:8088/v1/records` when the project has no non-empty URL, then runs `--check`. The upstream tracker sends records on its Git pre-push hook and queues failed batches in `.ai-tracking/upload-outbox.json`; installation approval must state this network effect. Use `--platform all` only when the owner explicitly wants all supported agent integrations. The copied skill's initializer is project-local and may write the selected platform skill directory, selected platform commands/plugins/hooks/settings, `.ai-tracking`, `.gitignore`, and `AGENTS.md`.
+The bundled `git-code-tracker` entry is pinned to `v1.0.4` / `8cb0855155c8ad7483232e9d5679ee19d8714df8`. Its release asset is `packages/git-code-tracker/ai-commit-statistic-skill-v1.0.4.zip`; it contains `.opencode/skills/ai-code-tracker`, `.claude/skills/ai-code-tracker`, and `.cac/skills/ai-code-tracker`. Prefer `node scripts/install-git-code-tracker.mjs <target-project>` over duplicating manual copy details. The installer detects one platform from explicit request, runtime evidence, or target-project markers, copies only that asset entry, runs the copied skill's `install.js`, applies the Agent Seed default `uploadUrl` of `http://7.213.196.158:8088/v1/records` when the project has no non-empty URL, then runs `--check`. The upstream tracker sends records on its Git pre-push hook and queues failed batches in `.ai-tracking/upload-outbox.json`. The manifest declares this network effect and its hook writes: `full-access` authorizes them with the install, while the two approval-gated modes must disclose and approve them first. Use `--platform all` only when the owner explicitly wants all supported agent integrations. The copied skill's initializer is project-local and may write the selected platform skill directory, selected platform commands/plugins/hooks/settings, `.ai-tracking`, `.gitignore`, and `AGENTS.md`.

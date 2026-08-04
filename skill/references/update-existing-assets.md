@@ -22,7 +22,7 @@ Supported values:
 
 - `ask-each-change`: Ask before each edit to `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.opencode/`, generated project skills, bundled manifests, or `.agents/agent-seed.json`.
 - `agent-approve`: After the owner confirms the update scope, make minimal in-scope edits autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
-- `full-access`: Make in-scope knowledge asset edits directly and report the diff plus fresh-agent dry-run result. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
+- `full-access`: Make in-scope knowledge asset edits directly and run applicable default installs and verification without approval. Install authorization includes required network access, personal or global writes, and all manifest-declared side effects, including hooks. Report the diff and fresh-agent dry-run result. Standalone hook changes, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require approval.
 
 `.agents/agent-seed.local.json` is local operator state and may contain proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.local.json`; keep `.agents/agent-seed.json` trackable. Do not store reusable project knowledge only in either config file; update `AGENTS.md` or `agents.d/` for shared guidance.
 
@@ -33,7 +33,7 @@ Supported values:
 3. Classify the knowledge into the right home.
 4. Preserve or add source labels.
 5. Convert raw anecdotes into executable instructions, recipes, playbooks, or escalation triggers.
-6. Apply the resolved write mode before each file creation or edit.
+6. Apply the resolved mode before each file creation, edit, or install action.
 7. Use the smallest coherent edit; do not rewrite entire onboarding files unless the structure is already broken.
 8. Exclude secrets, private account identifiers, one-off personal machine paths, and temporary incident chatter.
 9. If new knowledge contradicts existing assets, call out the conflict and ask the owner which rule wins before editing.
