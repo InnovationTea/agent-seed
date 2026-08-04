@@ -9,7 +9,7 @@ Distill repository evidence and owner knowledge into executable agent runbooks, 
 
 Default to senior-developer knowledge distillation. The normal output is `AGENTS.md` plus `agents.d/`; add platform-specific files only for platforms the owner uses, and generate or propose a project-specific skill when repeated workflows should trigger automatically.
 
-This skill can also distribute bundled direct skills listed in `bundled-skills.json` and bundled packages listed in `bundled-packages.json`. A bundled direct skill is a simple skill directory copied into supported project-local platform paths. A bundled package may contain one or more platform-specific skills and may be configured as a default project-local install candidate. Every onboarding run for Codex, Claude Code, OpenCode, codeagent-cli (cac), or another supported agent must inspect these manifests. For integrations named by `activation_policy.recurring_install_prompt`, ask whether to install every missing applicable integration on every activation before onboarding, then run it only after user approval.
+This skill can also distribute bundled direct skills listed in `bundled-skills.json` and bundled packages listed in `bundled-packages.json`. A bundled direct skill is a simple skill directory copied into supported project-local platform paths. A bundled package may contain one or more platform-specific skills and may be configured as a default project-local install candidate. Every onboarding run for Codex, Claude Code, OpenCode, codeagent-cli (cac), or another supported agent must inspect these manifests. Apply each manifest's mode-aware activation policy: `full-access` installs and verifies applicable defaults autonomously, while `ask-each-change` and `agent-approve` retain approval-gated install prompts.
 
 ## Version And Self Update
 
@@ -123,13 +123,15 @@ belong to the bundled project-local `agent-seed-updater` skill instead of this
 onboarding skill.
 
 Offer `agent-seed-updater` for every detected, requested, or owner-confirmed
-platform according to `bundled-skills.json`. Installation and the corresponding
-project-instruction edits require owner approval. The normal self-update command
-records the installed root under `.agents/agent-seed.local.json.installation` so the
-project-local updater can locate the packaged scripts and manifests without
-searching personal or global skill directories.
+platform according to `bundled-skills.json`. In `full-access`, install it and
+apply its declared project-instruction edits without a separate prompt. In the
+two approval-gated modes, installation and those edits require owner approval.
+The normal self-update command records the installed root under
+`.agents/agent-seed.local.json.installation` so the project-local updater can
+locate the packaged scripts and manifests without searching personal or global
+skill directories.
 
-After an approved install, add one canonical startup rule to `AGENTS.md`:
+After an authorized install, add one canonical startup rule to `AGENTS.md`:
 before the first user task in each new agent conversation, invoke the installed
 `agent-seed-updater` exactly once. Let it run only Agent Seed's cached
 self-update check and the local managed-skill manifest check; do not let it
@@ -182,14 +184,15 @@ Agent Seed performs initial repository scanning and owner interviews. Routine
 incremental maintenance belongs to the bundled `knowledge-updater` skill.
 
 Offer its project-local installation for every detected, requested, or
-owner-confirmed platform according to `bundled-skills.json`. Installation and
-the corresponding project-instruction edits require owner approval. After an
-approved install, add a concise canonical rule to `AGENTS.md` for Codex and
-OpenCode. For Claude Code and codeagent-cli, ensure the root `CLAUDE.md`
-imports `@AGENTS.md` so the same rule is visible without duplication. The rule
-requires the main agent to invoke `knowledge-updater` after completing and
-verifying every task, immediately before its final response, and to append
-exactly one returned knowledge-asset status.
+owner-confirmed platform according to `bundled-skills.json`. In `full-access`,
+install it and apply its declared project-instruction edits without a separate
+prompt. In the two approval-gated modes, installation and those edits require
+owner approval. After an authorized install, add a concise canonical rule to
+`AGENTS.md` for Codex and OpenCode. For Claude Code and codeagent-cli, ensure
+the root `CLAUDE.md` imports `@AGENTS.md` so the same rule is visible without
+duplication. The rule requires the main agent to invoke `knowledge-updater`
+after completing and verifying every task, immediately before its final
+response, and to append exactly one returned knowledge-asset status.
 
 Verify skill availability and completion-rule visibility independently. An
 installed skill with a missing or stale instruction bridge is not complete;
@@ -213,11 +216,17 @@ local data is left untouched.
 
 ## Activation Preflight
 
-Before scanning, interviewing, generating files, or answering onboarding conclusions, complete the Activation Preflight. First, inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json`; agents must inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json` before continuing. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
+Resolve `knowledge_asset_write_mode` before the Activation Preflight. The current user request wins over shared `.agents/agent-seed.json`; if neither selects a mode, default to `full-access`. Before scanning, interviewing, generating files, or answering onboarding conclusions, inspect `external-packages.json`, `bundled-skills.json`, and `bundled-packages.json`. Treat each manifest's `activation_policy.on_agent_seed_start: "must_check"` as a hard gate, including in Claude Code and other environments that may not load platform-specific prompts.
 
-After the target root is known, perform a minimal platform-evidence scan inside that root before deciding which manifest entries apply. Identify the current agent platform from the active environment, user request, and platform evidence such as `.codex/`, `skills/`, `.claude/`, `CLAUDE.md`, `.cac/`, `.opencode/`, `opencode.json`, or `.opencode.yaml`. Treat `.cac/` as codeagent-cli (cac), a Claude-compatible layout whose project-local files mirror `.claude/` under a different directory name. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. If target-root platform evidence is absent or ambiguous, inspect current agent runtime evidence next, such as the platform that loaded this skill, visible skills, platform-specific prompt metadata, tool names, or explicit user invocation. Ask the owner before inspecting user-level agent configuration, `$CODEX_HOME`, personal/global directories, plugin caches, session history, or installed global skills; use those locations only to identify candidate platforms, not as target-project facts. If runtime or approved user-level evidence reveals multiple platform candidates, ask the owner to choose which agent platform or platforms this project should support before offering installs or generating platform-specific assets. For each configured external plugin that applies to the platform and is not already visible, offer the platform-native install action from `external-packages.json`. For each bundled direct skill or bundled package with `default_install.offer_by_default: true`, offer the configured project-local install for platforms the owner explicitly uses, repository evidence detects, runtime evidence identifies, or the owner confirms from user-level evidence. For `git-code-tracker` and OpenCLI, read each manifest's `activation_policy.recurring_install_prompt`. When a named integration applies to the selected platform and is missing, ask whether to install it on every activation before onboarding. If the owner declines, ask for a reason, record the reason, and continue onboarding; a previous decline must not suppress a future prompt. Do not prompt for an installed integration whose configured verification has passed. `git-code-tracker` remains project-local and approval-gated; OpenCLI remains networked, global, and approval-gated.
+After the target root is known, perform a minimal platform-evidence scan inside that root before deciding which manifest entries apply. Identify the current agent platform from the active environment, user request, and platform evidence such as `.codex/`, `skills/`, `.claude/`, `CLAUDE.md`, `.cac/`, `.opencode/`, `opencode.json`, or `.opencode.yaml`. Treat `.cac/` as codeagent-cli (cac), a Claude-compatible layout whose project-local files mirror `.claude/` under a different directory name. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. If target-root platform evidence is absent or ambiguous, inspect current agent runtime evidence next, such as the platform that loaded this skill, visible skills, platform-specific prompt metadata, tool names, or explicit user invocation. Ask the owner before inspecting user-level agent configuration, `$CODEX_HOME`, personal/global directories, plugin caches, session history, or installed global skills; use those locations only to identify candidate platforms, not as target-project facts. If runtime or approved user-level evidence reveals multiple platform candidates, ask the owner to choose which agent platform or platforms this project should support before installing or generating platform-specific assets.
 
-Do not continue with onboarding work until each applicable default or recommended item is accepted, declined, already available, platform-inapplicable, or explicitly deferred. Specifically, do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed until this is resolved. Record the reason when an applicable install is skipped. Never run an install command, copy skill files, modify hooks, network access other than the authorized read-only self-update check, or write personal/global directories without owner approval.
+Check the configured detection evidence and verification before taking any install action. Do not reinstall an integration whose configured verification passes. External recommendations remain subject to their `use_when` and evidence rules; bundled entries remain subject to `default_install.offer_by_default` and detected-or-requested platform gating. A conditional tool is not applicable merely because the resolved mode is `full-access`.
+
+In `full-access`, install and verify every missing applicable default without owner approval. Permit the install's required network access and personal or global directory writes without approval. Authorization covers all manifest-declared side effects, including hooks, project instruction edits, and package write roots. Superpowers and OpenCLI are required preflight integrations when they apply to the selected platform. An install or verification failure must block onboarding: report the integration, platform, attempted action, observed failure, and concrete recovery step. If an interactive marketplace or manual platform action prevents completion, stop onboarding, report the exact action, and rerun verification after the owner completes it. Do not record these failures as declines or continue onboarding around them.
+
+In `ask-each-change` and `agent-approve`, ask for approval before installing an applicable default. For `git-code-tracker`, OpenCLI, and any other integration named by `activation_policy.recurring_install_prompt`, `ask-each-change` and `agent-approve` must ask on every activation while the integration remains missing. If the owner declines, ask for a reason, append it to local `install_prompt_history`, and continue onboarding; a previous decline must not suppress a future prompt. Do not prompt for an installed integration whose configured verification has passed.
+
+Do not continue with onboarding until every applicable item is installed and verified, already available, platform-inapplicable, or resolved under the applicable approval-gated policy. Standalone hook changes outside an authorized install, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require owner approval in every mode.
 
 Persist the target project's shared Agent Seed policy in `.agents/agent-seed.json`:
 
@@ -233,7 +242,7 @@ Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The c
 
 Treat external agent workflow suites listed in `external-packages.json` as recommended platform plugins, not bundled packages, unless the user explicitly asks to vendor them. If a configured plugin applies to the owner's platform and is not visible in the current agent environment or project platform config, recommend installing it through the platform's normal network-backed plugin flow instead of copying its internals into the project.
 
-When Superpowers is visible in the current agent environment, use it as the default SDD workflow suite for agent-runnable development loops. Require `superpowers:brainstorming` for feature or behavior design, `superpowers:writing-plans` for implementation planning, `superpowers:subagent-driven-development` or `superpowers:executing-plans` for plan execution, `superpowers:test-driven-development` for feature and bugfix implementation, `superpowers:systematic-debugging` for bugs or unexpected behavior, `superpowers:verification-before-completion` before completion claims, and `superpowers:requesting-code-review` or `superpowers:receiving-code-review` around review handoffs. If Superpowers is not visible but applies to the owner's platform, recommend installing it from `external-packages.json` and proceed only with owner approval. If the owner declines or the platform cannot load it, document the same SDD stages as expected workflow guidance without claiming the skills are available.
+When Superpowers is visible in the current agent environment, use it as the default SDD workflow suite for agent-runnable development loops. Require `superpowers:brainstorming` for feature or behavior design, `superpowers:writing-plans` for implementation planning, `superpowers:subagent-driven-development` or `superpowers:executing-plans` for plan execution, `superpowers:test-driven-development` for feature and bugfix implementation, `superpowers:systematic-debugging` for bugs or unexpected behavior, `superpowers:verification-before-completion` before completion claims, and `superpowers:requesting-code-review` or `superpowers:receiving-code-review` around review handoffs. When Superpowers is missing but applies to the selected platform, in `full-access` install and verify it as a required preflight integration. In `ask-each-change` or `agent-approve`, recommend installing it from `external-packages.json` and proceed only after approval; if the owner declines or the platform cannot load it, document the same SDD stages as expected workflow guidance without claiming the skills are available.
 
 The output files are internal engineering guides and automation runbooks, not consulting reports.
 
@@ -254,13 +263,13 @@ The output files are internal engineering guides and automation runbooks, not co
 - Route routine knowledge discovered during later agent work to the installed `knowledge-updater` skill.
 - Distill tacit knowledge into executable instructions, recipes, playbooks, and handoff criteria, not background explanation.
 - Preserve existing instruction files unless the user confirms replacement.
-- Resolve `knowledge_asset_write_mode` before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets directly and report diffs, but still ask before secrets, production actions, destructive changes, installs, hooks, external network use, or personal/global directory writes.
+- Resolve `knowledge_asset_write_mode` before the Activation Preflight and before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit and before installation. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets and run applicable manifest installs directly; install authorization includes required network access, personal/global writes, and manifest-declared side effects such as hooks. Standalone hook changes, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require owner approval.
 - Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-seed skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` as repository evidence unless the user explicitly names one of them as the target project. When target-root evidence cannot identify the platform, ask before a narrow user-level fallback scan and confirm any platform inferred from that scan with the owner.
 - Complete Activation Preflight before scan summaries, owner interviews, generated guidance, or claims that no installs are needed; the preflight may include the minimal target-root platform-evidence scan described above.
-- Do not run install, build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment.
-- Install bundled direct skills according to `bundled-skills.json`: proactively offer configured default project-local installs, install only platforms the owner explicitly uses or the repository evidence detects, and get user approval before copying files into the target project.
-- Install bundled packages according to `bundled-packages.json`: proactively offer configured default project-local installs, but get user approval before running installers that modify the target project.
-- Do not install bundled direct skills or bundled platform skills from packages into personal/global Codex/Claude/codeagent-cli/OpenCode directories unless the user explicitly asks for personal/global installation.
+- Do not run build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment; installation authorization is controlled by the resolved manifest mode policy.
+- Install bundled direct skills according to `bundled-skills.json` only for platforms the owner explicitly uses or repository evidence detects. In `full-access`, install and verify every missing applicable default without a separate prompt. In `ask-each-change` and `agent-approve`, ask for approval before installing or applying declared post-install instruction edits.
+- Install bundled packages according to `bundled-packages.json` only when their applicability and platform gates pass. In `full-access`, run and verify applicable default installers with all declared write roots and side effects authorized. In the two approval-gated modes, disclose those effects and get approval first.
+- A selected personal/global install target does not require another prompt in `full-access`; in the two approval-gated modes, personal/global installation requires explicit owner approval.
 - Do not store secrets, personal machine paths, private account identifiers, one-off incident chatter, or temporary knowledge in onboarding assets.
 
 ## Progressive Disclosure

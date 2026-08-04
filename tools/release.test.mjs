@@ -810,19 +810,20 @@ test("core skill instructions define activation preflight as a hard gate", async
 
   assert.match(skill, /## Activation Preflight/);
   assert.match(skill, /Before scanning, interviewing, generating files, or answering onboarding conclusions/i);
-  assert.match(skill, /must inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
-  assert.match(skill, /Do not continue with onboarding work until each applicable default or recommended item/i);
-  assert.match(skill, /accepted, declined, already available, platform-inapplicable, or explicitly deferred/i);
-  assert.match(skill, /Record the reason when an applicable install is skipped/i);
+  assert.match(skill, /inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
+  assert.match(skill, /Do not continue with onboarding until every applicable item/i);
+  assert.match(skill, /installed and verified, already available, platform-inapplicable, or resolved under the applicable approval-gated policy/i);
+  assert.match(skill, /declines.*install_prompt_history/is);
 });
 
 test("activation preflight separates manifest inspection from repository evidence based applicability", async () => {
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
 
-  assert.match(skill, /First, inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
+  assert.match(skill, /Resolve `knowledge_asset_write_mode` before the Activation Preflight/i);
+  assert.match(skill, /inspect `external-packages\.json`, `bundled-skills\.json`, and `bundled-packages\.json`/i);
   assert.match(skill, /After the target root is known, perform a minimal platform-evidence scan/i);
-  assert.match(skill, /Do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed/i);
+  assert.match(skill, /Do not continue with onboarding until every applicable item/i);
 });
 
 test("activation preflight falls back from project evidence to runtime and approved user-level evidence", async () => {
@@ -915,23 +916,46 @@ test("Agent Seed documents recurring prompts for required integrations", async (
 
   assert.match(skill, /git-code-tracker/i);
   assert.match(skill, /OpenCLI/i);
-  assert.match(skill, /every activation/i);
+  assert.match(skill, /ask-each-change.*agent-approve.*every activation/is);
   assert.match(skill, /record.*reason.*continue/i);
   assert.match(skill, /must not suppress.*future.*prompt/i);
+  assert.match(skill, /full-access.*install.*verify/is);
   assert.match(skill, /install_prompt_history/);
   assert.match(skill, /\.agents\/agent-seed\.json/);
-  assert.match(prompt, /every activation/i);
+  assert.match(prompt, /ask-each-change.*agent-approve.*every activation/i);
+  assert.match(prompt, /full-access.*install.*verify/i);
   assert.match(prompt, /git-code-tracker/i);
   assert.match(prompt, /OpenCLI/i);
 });
 
-test("Codex default prompt tells agents to offer default bundled package installs", async () => {
+test("Codex default prompt makes bundled package installs mode aware", async () => {
   const promptPath = path.join(process.cwd(), "skill", "agents", "openai.yaml");
   const prompt = await readFile(promptPath, "utf8");
 
   assert.match(prompt, /bundled-packages\.json/);
-  assert.match(prompt, /offer default/i);
-  assert.match(prompt, /approval/i);
+  assert.match(prompt, /full-access.*install.*verify.*without approval/i);
+  assert.match(prompt, /ask-each-change.*agent-approve.*approval/i);
+});
+
+test("Agent Seed resolves full-access before installing applicable defaults", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const prompt = await readFile(path.join(rootDir, "skill", "agents", "openai.yaml"), "utf8");
+
+  assert.match(skill, /resolve `knowledge_asset_write_mode` before the Activation Preflight/i);
+  assert.match(skill, /full-access.*install.*without.*approval/is);
+  assert.match(skill, /network.*personal.*global.*without.*approval/is);
+  assert.match(skill, /manifest-declared.*side effects.*hooks/is);
+  assert.match(skill, /Superpowers.*OpenCLI.*required/is);
+  assert.match(skill, /install.*verification.*failure.*block.*onboarding/is);
+  assert.match(skill, /interactive.*manual.*stop.*onboarding/is);
+  assert.match(skill, /standalone hook.*secrets.*production.*destructive/is);
+  assert.match(skill, /ask-each-change.*agent-approve.*ask/is);
+
+  assert.match(prompt, /resolve.*knowledge_asset_write_mode.*before.*preflight/i);
+  assert.match(prompt, /full-access.*install.*verify.*without approval/i);
+  assert.match(prompt, /Superpowers.*OpenCLI/i);
+  assert.match(prompt, /failure.*block onboarding/i);
 });
 
 test("skill identity uses Agent Seed naming", async () => {
@@ -946,7 +970,7 @@ test("skill identity uses Agent Seed naming", async () => {
   assert.match(prompt, /\$agent-seed/);
 });
 
-test("core skill instructions require cross-platform default package install offers", async () => {
+test("core skill instructions require mode-aware cross-platform default package installs", async () => {
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
 
@@ -954,7 +978,8 @@ test("core skill instructions require cross-platform default package install off
   assert.match(skill, /bundled-packages\.json/);
   assert.match(skill, /default_install\.offer_by_default/);
   assert.match(skill, /Codex, Claude Code, OpenCode/);
-  assert.match(skill, /approval/i);
+  assert.match(skill, /In `full-access`, install and verify every missing applicable default/is);
+  assert.match(skill, /In `ask-each-change` and `agent-approve`, ask for approval before installing/is);
 });
 
 test("knowledge asset write mode is persistent and documented across write workflows", async () => {
@@ -1016,15 +1041,15 @@ test("external plugin prose stays configuration driven", async () => {
   }
 });
 
-test("core skill instructions define Superpowers SDD as an ask-first external workflow", async () => {
+test("core skill instructions define mode-aware Superpowers SDD installation", async () => {
   const skillPath = path.join(process.cwd(), "skill", "SKILL.md");
   const skill = await readFile(skillPath, "utf8");
 
   assert.match(skill, /Superpowers/i);
   assert.match(skill, /external-packages\.json/);
   assert.match(skill, /not visible/i);
-  assert.match(skill, /recommend installing/i);
-  assert.match(skill, /approval/i);
+  assert.match(skill, /When Superpowers is missing.*`full-access`.*install and verify.*required preflight integration/is);
+  assert.match(skill, /In `ask-each-change` or `agent-approve`, recommend.*approval/is);
   assert.match(skill, /superpowers:brainstorming/);
   assert.match(skill, /superpowers:writing-plans/);
   assert.match(skill, /superpowers:subagent-driven-development/);
