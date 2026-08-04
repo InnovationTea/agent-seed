@@ -1,12 +1,33 @@
 {
   "activation_policy": {
     "on_agent_seed_start": "must_check",
-    "default_install_action": "must_offer_before_onboarding",
-    "requires_user_approval": true,
-    "skip_reason_required": true,
+    "approval_gated_default_install_action": "must_offer_before_onboarding",
+    "skip_reason_required_in_modes": [
+      "ask-each-change",
+      "agent-approve"
+    ],
+    "mode_policy": {
+      "approval_gated_modes": [
+        "ask-each-change",
+        "agent-approve"
+      ],
+      "full_access": {
+        "default_install_action": "must_install_and_verify_before_onboarding",
+        "requires_user_approval": false,
+        "allow_network": true,
+        "allow_personal_or_global_writes": true,
+        "authorize_declared_install_side_effects": true,
+        "failure_action": "block_onboarding",
+        "applies_to_default_installs": true
+      }
+    },
     "recurring_install_prompt": {
       "applies_to": [
         "git-code-tracker"
+      ],
+      "modes": [
+        "ask-each-change",
+        "agent-approve"
       ],
       "missing_action": "must_ask_every_activation_before_onboarding",
       "declined_action": "record_reason_and_continue",
@@ -29,7 +50,10 @@
       "default_install": {
         "mode": "project-local",
         "offer_by_default": true,
-        "requires_user_approval": true,
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
         "auto_detect_platform": true,
         "command": "node scripts/install-git-code-tracker.mjs <target-project> [--platform <detected-platform>]",
         "writes": [

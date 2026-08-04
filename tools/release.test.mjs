@@ -199,6 +199,28 @@ test("release CLI accepts a local version override", async () => {
   }
 });
 
+function assertModeAwareInstallPolicy(activationPolicy, { requiredIntegrations, appliesToDefaultInstalls } = {}) {
+  assert.deepEqual(activationPolicy.mode_policy.approval_gated_modes, ["ask-each-change", "agent-approve"]);
+  assert.deepEqual(activationPolicy.mode_policy.full_access, {
+    default_install_action: "must_install_and_verify_before_onboarding",
+    requires_user_approval: false,
+    allow_network: true,
+    allow_personal_or_global_writes: true,
+    authorize_declared_install_side_effects: true,
+    failure_action: "block_onboarding",
+    ...(requiredIntegrations ? { required_integrations: requiredIntegrations } : {}),
+    ...(appliesToDefaultInstalls ? { applies_to_default_installs: true } : {}),
+  });
+  assert.deepEqual(activationPolicy.skip_reason_required_in_modes, ["ask-each-change", "agent-approve"]);
+  assert.equal(activationPolicy.requires_user_approval, undefined);
+  assert.equal(activationPolicy.skip_reason_required, undefined);
+}
+
+function assertModeAwareItemApproval(item) {
+  assert.deepEqual(item.requires_user_approval_in_modes, ["ask-each-change", "agent-approve"]);
+  assert.equal(item.requires_user_approval, undefined);
+}
+
 test("external packages config uses the generalized file name", async () => {
   const packagesPath = path.join(process.cwd(), "skill", "external-packages.json");
   const pluginsPath = path.join(process.cwd(), "skill", "external-plugins.json");
@@ -212,11 +234,13 @@ test("external packages config includes install metadata", async () => {
   const config = JSON.parse(await readFile(configPath, "utf8"));
 
   assert.equal(config.activation_policy.on_agent_seed_start, "must_check");
-  assert.equal(config.activation_policy.missing_action, "must_offer_before_onboarding");
-  assert.equal(config.activation_policy.requires_user_approval, true);
-  assert.equal(config.activation_policy.skip_reason_required, true);
+  assert.equal(config.activation_policy.approval_gated_missing_action, "must_offer_before_onboarding");
+  assertModeAwareInstallPolicy(config.activation_policy, {
+    requiredIntegrations: ["superpowers", "opencli"],
+  });
   assert.deepEqual(config.activation_policy.recurring_install_prompt, {
     applies_to: ["opencli"],
+    modes: ["ask-each-change", "agent-approve"],
     missing_action: "must_ask_every_activation_before_onboarding",
     declined_action: "record_reason_and_continue",
     previous_decline_suppresses_prompt: false,
@@ -242,9 +266,12 @@ test("external packages config includes install metadata", async () => {
     assert.equal(typeof plugin.do_not_vendor_unless_explicitly_requested, "boolean");
 
     assert.equal(typeof plugin.default_recommendation.requires_network, "boolean");
-    assert.equal(typeof plugin.default_recommendation.requires_user_approval, "boolean");
-    assert.equal(typeof plugin.default_recommendation.safety_level, "string");
-    assert.notEqual(plugin.default_recommendation.safety_level.trim(), "");
+    assertModeAwareItemApproval(plugin.default_recommendation);
+    assert.deepEqual(plugin.default_recommendation.safety_level_by_mode, {
+      "ask-each-change": "ask-first",
+      "agent-approve": "ask-first",
+      "full-access": "autonomous",
+    });
 
     assert.ok(Array.isArray(plugin.platforms));
     assert.ok(plugin.platforms.length > 0);
@@ -325,18 +352,29 @@ test("bundled install manifests require activation preflight handling", async ()
 
   for (const config of [bundledSkills, bundledPackages]) {
     assert.equal(config.activation_policy.on_agent_seed_start, "must_check");
-    assert.equal(config.activation_policy.default_install_action, "must_offer_before_onboarding");
-    assert.equal(config.activation_policy.requires_user_approval, true);
-    assert.equal(config.activation_policy.skip_reason_required, true);
+    assert.equal(config.activation_policy.approval_gated_default_install_action, "must_offer_before_onboarding");
+    assertModeAwareInstallPolicy(config.activation_policy, { appliesToDefaultInstalls: true });
   }
 
   assert.equal(bundledSkills.activation_policy.recurring_install_prompt, undefined);
   assert.deepEqual(bundledPackages.activation_policy.recurring_install_prompt, {
     applies_to: ["git-code-tracker"],
+    modes: ["ask-each-change", "agent-approve"],
     missing_action: "must_ask_every_activation_before_onboarding",
     declined_action: "record_reason_and_continue",
     previous_decline_suppresses_prompt: false,
   });
+
+  for (const entry of bundledSkills.bundled_skills) {
+    assertModeAwareItemApproval(entry.default_install);
+    if (entry.post_install) {
+      assertModeAwareItemApproval(entry.post_install);
+    }
+  }
+
+  for (const entry of bundledPackages.bundled_packages) {
+    assertModeAwareItemApproval(entry.default_install);
+  }
 });
 
 test("bundled direct skill manifest registers every bundled skill directory", async () => {
@@ -369,7 +407,7 @@ test("ticket-lookup bundled skill defines configurable read-only SR and AR retri
   assert.equal(ticketLookup.source_path, "bundled-skills/ticket-lookup/skill");
   assert.equal(ticketLookup.default_install.mode, "project-local");
   assert.equal(ticketLookup.default_install.offer_by_default, true);
-  assert.equal(ticketLookup.default_install.requires_user_approval, true);
+  assertModeAwareItemApproval(ticketLookup.default_install);
   assert.equal(ticketLookup.default_install.install_only_for_detected_or_requested_platforms, true);
   assert.deepEqual(ticketLookup.platforms.map((platform) => platform.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
   assert.equal(ticketLookup.platforms.find((platform) => platform.platform === "codex").overlay_path, "bundled-skills/ticket-lookup/overlays/codex");
@@ -426,7 +464,7 @@ test("agent-seed-updater bundled skill defines a bounded conversation preflight"
   assert.equal(updater.source_path, "bundled-skills/agent-seed-updater/skill");
   assert.equal(updater.default_install.mode, "project-local");
   assert.equal(updater.default_install.offer_by_default, true);
-  assert.equal(updater.default_install.requires_user_approval, true);
+  assertModeAwareItemApproval(updater.default_install);
   assert.equal(updater.default_install.install_only_for_detected_or_requested_platforms, true);
   assert.deepEqual(updater.platforms.map((entry) => entry.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
   assert.equal(
@@ -435,7 +473,7 @@ test("agent-seed-updater bundled skill defines a bounded conversation preflight"
   );
   assert.deepEqual(updater.post_install, {
     action: "ensure-agent-seed-updater-startup-rule",
-    requires_user_approval: true,
+    requires_user_approval_in_modes: ["ask-each-change", "agent-approve"],
     instruction_files: ["AGENTS.md", "CLAUDE.md"],
   });
 
@@ -473,7 +511,7 @@ test("knowledge-updater bundled skill defines recurring bounded knowledge mainte
   assert.equal(updater.source_path, "bundled-skills/knowledge-updater/skill");
   assert.equal(updater.default_install.mode, "project-local");
   assert.equal(updater.default_install.offer_by_default, true);
-  assert.equal(updater.default_install.requires_user_approval, true);
+  assertModeAwareItemApproval(updater.default_install);
   assert.equal(updater.default_install.install_only_for_detected_or_requested_platforms, true);
   assert.deepEqual(updater.platforms.map((platform) => platform.platform).sort(), ["claude", "codeagent-cli", "codex", "opencode"]);
   assert.equal(
@@ -811,8 +849,12 @@ test("external plugins include OpenCLI for browser automation", async () => {
   assert.match(opencli.purpose, /website|browser|web/i);
   assert.match(opencli.use_when, /default/i);
   assert.equal(opencli.default_recommendation.requires_network, true);
-  assert.equal(opencli.default_recommendation.requires_user_approval, true);
-  assert.equal(opencli.default_recommendation.safety_level, "ask-first");
+  assertModeAwareItemApproval(opencli.default_recommendation);
+  assert.deepEqual(opencli.default_recommendation.safety_level_by_mode, {
+    "ask-each-change": "ask-first",
+    "agent-approve": "ask-first",
+    "full-access": "autonomous",
+  });
   assert.match(opencli.default_recommendation.recommend_by_default_when, /supported platform/i);
 
   const supportedPlatforms = ["codex", "claude", "codeagent-cli", "opencode"];
@@ -840,8 +882,12 @@ test("external plugins include DevEco CLI for HarmonyOS projects", async () => {
   assert.match(deveco.use_when, /HarmonyOS|OpenHarmony|ArkUI|ArkTS/);
   assert.match(deveco.use_when, /DevEco Toolbox|deveco-toolbox|@deveco-codegenie\/mcp/);
   assert.equal(deveco.default_recommendation.requires_network, true);
-  assert.equal(deveco.default_recommendation.requires_user_approval, true);
-  assert.equal(deveco.default_recommendation.safety_level, "ask-first");
+  assertModeAwareItemApproval(deveco.default_recommendation);
+  assert.deepEqual(deveco.default_recommendation.safety_level_by_mode, {
+    "ask-each-change": "ask-first",
+    "agent-approve": "ask-first",
+    "full-access": "autonomous",
+  });
   assert.match(deveco.default_recommendation.recommend_by_default_when, /HarmonyOS/i);
   assert.match(deveco.default_recommendation.recommend_by_default_when, /DevEco Toolbox|@deveco-codegenie\/mcp/);
   assert.ok(deveco.platforms.some((platform) => /npm install -g @deveco\/deveco-cli@latest/.test(platform.install_action)));

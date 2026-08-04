@@ -1,9 +1,29 @@
 {
   "activation_policy": {
     "on_agent_seed_start": "must_check",
-    "missing_action": "must_offer_before_onboarding",
-    "requires_user_approval": true,
-    "skip_reason_required": true,
+    "approval_gated_missing_action": "must_offer_before_onboarding",
+    "skip_reason_required_in_modes": [
+      "ask-each-change",
+      "agent-approve"
+    ],
+    "mode_policy": {
+      "approval_gated_modes": [
+        "ask-each-change",
+        "agent-approve"
+      ],
+      "full_access": {
+        "default_install_action": "must_install_and_verify_before_onboarding",
+        "requires_user_approval": false,
+        "allow_network": true,
+        "allow_personal_or_global_writes": true,
+        "authorize_declared_install_side_effects": true,
+        "failure_action": "block_onboarding",
+        "required_integrations": [
+          "superpowers",
+          "opencli"
+        ]
+      }
+    },
     "update_policy": {
       "ownership": "platform-native",
       "version_check": "best-effort",
@@ -12,6 +32,10 @@
     "recurring_install_prompt": {
       "applies_to": [
         "opencli"
+      ],
+      "modes": [
+        "ask-each-change",
+        "agent-approve"
       ],
       "missing_action": "must_ask_every_activation_before_onboarding",
       "declined_action": "record_reason_and_continue",
@@ -27,8 +51,15 @@
       "do_not_vendor_unless_explicitly_requested": true,
       "default_recommendation": {
         "requires_network": true,
-        "requires_user_approval": true,
-        "safety_level": "ask-first"
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
+        "safety_level_by_mode": {
+          "ask-each-change": "ask-first",
+          "agent-approve": "ask-first",
+          "full-access": "autonomous"
+        }
       },
       "platforms": [
         {
@@ -79,14 +110,21 @@
       "do_not_vendor_unless_explicitly_requested": true,
       "default_recommendation": {
         "requires_network": true,
-        "requires_user_approval": true,
-        "safety_level": "ask-first",
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
+        "safety_level_by_mode": {
+          "ask-each-change": "ask-first",
+          "agent-approve": "ask-first",
+          "full-access": "autonomous"
+        },
         "recommend_by_default_when": "HarmonyOS/OpenHarmony/ArkUI/ArkTS evidence is detected, including oh-package.json5, build-profile.json5, module.json5, app.json5, hvigorfile.*, @deveco/deveco-cli, devecocli, DevEco Studio, DevEco Toolbox, deveco-toolbox, @deveco-codegenie/mcp, ohpm, hdc, hilog, or emulator tooling."
       },
       "platforms": [
         {
           "platform": "codex",
-          "install_action": "Run npm install -g @deveco/deveco-cli@latest after user approval, then optionally run devecocli init --agent codex or devecocli init --mcp --agent codex --project <target-project> only with separate approval.",
+          "install_action": "Run npm install -g @deveco/deveco-cli@latest. Run devecocli init --agent codex or devecocli init --mcp --agent codex --project <target-project> only when the selected workflow requires project or MCP initialization.",
           "detection_evidence": [
             "HarmonyOS manifests such as oh-package.json5, build-profile.json5, module.json5, or app.json5 exist in the target project.",
             "Project files mention DevEco Studio, DevEco Toolbox, deveco-toolbox, deveco-mcp-server, @deveco-codegenie/mcp, devecocli, @deveco/deveco-cli, ohpm, hvigor, hdc, hilog, emulator, ArkUI, ArkTS, HarmonyOS, or OpenHarmony.",
@@ -97,7 +135,7 @@
         },
         {
           "platform": "claude",
-          "install_action": "Run npm install -g @deveco/deveco-cli@latest after user approval, then optionally run devecocli init --agent claude or devecocli init --mcp --agent claude --project <target-project> only with separate approval.",
+          "install_action": "Run npm install -g @deveco/deveco-cli@latest. Run devecocli init --agent claude or devecocli init --mcp --agent claude --project <target-project> only when the selected workflow requires project or MCP initialization.",
           "detection_evidence": [
             "HarmonyOS manifests such as oh-package.json5, build-profile.json5, module.json5, or app.json5 exist in the target project.",
             "Project files mention DevEco Studio, DevEco Toolbox, deveco-toolbox, deveco-mcp-server, @deveco-codegenie/mcp, devecocli, @deveco/deveco-cli, ohpm, hvigor, hdc, hilog, emulator, ArkUI, ArkTS, HarmonyOS, or OpenHarmony.",
@@ -108,7 +146,7 @@
         },
         {
           "platform": "codeagent-cli",
-          "install_action": "Run npm install -g @deveco/deveco-cli@latest after user approval, then use codeagent-cli's Claude-compatible .cac skill layout or adapt generated Claude assets into .cac only with separate approval.",
+          "install_action": "Run npm install -g @deveco/deveco-cli@latest. Use codeagent-cli's Claude-compatible .cac skill layout or adapt generated Claude assets into .cac only when the selected workflow requires project initialization.",
           "detection_evidence": [
             "HarmonyOS manifests such as oh-package.json5, build-profile.json5, module.json5, or app.json5 exist in the target project.",
             "Project files mention DevEco Studio, DevEco Toolbox, deveco-toolbox, deveco-mcp-server, @deveco-codegenie/mcp, devecocli, @deveco/deveco-cli, ohpm, hvigor, hdc, hilog, emulator, ArkUI, ArkTS, HarmonyOS, or OpenHarmony.",
@@ -120,7 +158,7 @@
         },
         {
           "platform": "opencode",
-          "install_action": "Run npm install -g @deveco/deveco-cli@latest after user approval, then optionally run devecocli init --agent opencode or devecocli init --mcp --agent opencode --project <target-project> only with separate approval.",
+          "install_action": "Run npm install -g @deveco/deveco-cli@latest. Run devecocli init --agent opencode or devecocli init --mcp --agent opencode --project <target-project> only when the selected workflow requires project or MCP initialization.",
           "detection_evidence": [
             "HarmonyOS manifests such as oh-package.json5, build-profile.json5, module.json5, or app.json5 exist in the target project.",
             "Project files mention DevEco Studio, DevEco Toolbox, deveco-toolbox, deveco-mcp-server, @deveco-codegenie/mcp, devecocli, @deveco/deveco-cli, ohpm, hvigor, hdc, hilog, emulator, ArkUI, ArkTS, HarmonyOS, or OpenHarmony.",
@@ -136,50 +174,57 @@
       "name": "opencli",
       "display_name": "OpenCLI",
       "purpose": "Website and browser automation, structured web extraction, and development or repair of reusable OpenCLI adapters through upstream-managed CLI and agent skills.",
-      "use_when": "Offer by default when a supported agent platform is detected or requested. Use after owner approval for website automation, browser-backed extraction, or OpenCLI adapter workflows.",
+      "use_when": "Offer by default when a supported agent platform is detected or requested. Use for website automation, browser-backed extraction, or OpenCLI adapter workflows under the resolved mode policy.",
       "do_not_vendor_unless_explicitly_requested": true,
       "default_recommendation": {
         "requires_network": true,
-        "requires_user_approval": true,
-        "safety_level": "ask-first",
+        "requires_user_approval_in_modes": [
+          "ask-each-change",
+          "agent-approve"
+        ],
+        "safety_level_by_mode": {
+          "ask-each-change": "ask-first",
+          "agent-approve": "ask-first",
+          "full-access": "autonomous"
+        },
         "recommend_by_default_when": "A supported platform is detected or requested during Agent Seed activation."
       },
       "platforms": [
         {
           "platform": "codex",
-          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "install_action": "Run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately tell the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
           "detection_evidence": [
             "opencli --version succeeds in the current environment.",
             "OpenCLI skills are already visible to the Codex session or project."
           ],
-          "verification": "Confirm opencli --version succeeds and Codex recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+          "verification": "Confirm opencli --version succeeds and Codex recognizes the installed OpenCLI skills. Run opencli doctor only when the selected workflow requires a browser-bridge diagnostic."
         },
         {
           "platform": "claude",
-          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "install_action": "Run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately tell the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
           "detection_evidence": [
             "opencli --version succeeds in the current environment.",
             "OpenCLI skills are already visible to the Claude Code session or project."
           ],
-          "verification": "Confirm opencli --version succeeds and Claude Code recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+          "verification": "Confirm opencli --version succeeds and Claude Code recognizes the installed OpenCLI skills. Run opencli doctor only when the selected workflow requires a browser-bridge diagnostic."
         },
         {
           "platform": "codeagent-cli",
-          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "install_action": "Run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately tell the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
           "detection_evidence": [
             "opencli --version succeeds in the current environment.",
             "OpenCLI skills are already visible to the codeagent-cli session or project."
           ],
-          "verification": "Confirm opencli --version succeeds and codeagent-cli recognizes the installed OpenCLI skills. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+          "verification": "Confirm opencli --version succeeds and codeagent-cli recognizes the installed OpenCLI skills. Run opencli doctor only when the selected workflow requires a browser-bridge diagnostic."
         },
         {
           "platform": "opencode",
-          "install_action": "After user approval, run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately ask the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
+          "install_action": "Run npm install -g @jackwener/opencli, then run npx skills add jackwener/opencli. For browser-backed work, separately tell the owner to manually install the OpenCLI Browser Bridge extension; do not install browser extensions automatically.",
           "detection_evidence": [
             "opencli --version succeeds in the current environment.",
             "OpenCLI skills are already visible to OpenCode through opencode.json, .opencode.yaml, or its loaded skill list."
           ],
-          "verification": "Confirm opencli --version succeeds and OpenCode recognizes the installed OpenCLI skills from opencode.json, .opencode.yaml, or its loaded skill list. Run opencli doctor only after the owner authorizes a browser-bridge diagnostic."
+          "verification": "Confirm opencli --version succeeds and OpenCode recognizes the installed OpenCLI skills from opencode.json, .opencode.yaml, or its loaded skill list. Run opencli doctor only when the selected workflow requires a browser-bridge diagnostic."
         }
       ]
     }
