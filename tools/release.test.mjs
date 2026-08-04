@@ -936,8 +936,9 @@ test("knowledge asset write mode is persistent and documented across write workf
 test("local Agent Seed config is ignored by Git", async () => {
   const gitignore = await readFile(path.join(process.cwd(), ".gitignore"), "utf8");
 
-  assert.match(gitignore, /^\.agents\/agent-seed\.json$/m);
-  assert.match(gitignore, /^\.agents\/managed-skills\.json$/m);
+  assert.match(gitignore, /^\.agents\/agent-seed\.local\.json$/m);
+  assert.doesNotMatch(gitignore, /^\.agents\/agent-seed\.json$/m);
+  assert.doesNotMatch(gitignore, /^\.agents\/managed-skills\.json$/m);
   assert.match(gitignore, /^\.agents\/ticket-lookup\.local\.json$/m);
 });
 

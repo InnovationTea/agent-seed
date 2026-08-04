@@ -247,6 +247,8 @@ test("recordInstallOfferDecline requires confirmation and stores the manifest ve
     });
     assert.equal(decline.offered_version, "v1.1.0");
     assert.equal((await manager.readManagedState(targetDir)).schema_version, 2);
+    const local = JSON.parse(await readFile(path.join(targetDir, ".agents", "agent-seed.local.json"), "utf8"));
+    assert.deepEqual(local.managed_skills.declined_install_offers, [decline]);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
