@@ -20,11 +20,13 @@ The following actions become autonomous in `full-access`:
 - project-local knowledge asset and generated guidance writes;
 - installation of applicable default or recommended integrations;
 - network access required by those installs and their verification;
-- writes to personal or global directories required by those installs.
+- writes to personal or global directories required by those installs;
+- all manifest-declared side effects required to complete those installs,
+  including hook creation or modification.
 
 The following actions continue to require explicit approval in every mode:
 
-- hook creation or modification;
+- standalone hook creation or modification outside an authorized install;
 - access to or storage of secrets;
 - production actions;
 - destructive actions.
@@ -42,7 +44,8 @@ The resolved mode controls both knowledge-asset writes and installation
 authorization:
 
 - In `full-access`, applicable default or recommended installs run without an
-  approval prompt.
+  approval prompt. The authorization covers every required side effect declared
+  by the selected manifest install action, including hooks.
 - In `agent-approve` and `ask-each-change`, installs, network access, and
   personal or global writes continue to require approval.
 
@@ -62,7 +65,7 @@ In `full-access`:
    installed and passes its configured verification.
 2. Install missing integrations with the configured platform-native action.
 3. Permit the install's required network and personal or global writes without a
-   separate prompt.
+   separate prompt, together with every manifest-declared install side effect.
 4. Run the configured verification.
 5. Continue onboarding only after every required preflight integration is
    installed or verified as already available.
@@ -79,7 +82,9 @@ continues in the two approval-gated modes.
 Other applicable items marked as default recommendations or default installs,
 including `git-code-tracker`, follow the same autonomous installation rule. This
 keeps the mode consistent across external plugins, bundled direct skills, and
-bundled packages.
+bundled packages. Because `git-code-tracker` declares `.git/hooks` among its
+install writes, that hook change is authorized as part of the install rather
+than treated as a tool-specific exception.
 
 ## Platform Constraints
 
@@ -108,8 +113,8 @@ reports:
 
 Agent Seed must not reinterpret a failed required installation as a decline or
 record a decline reason. A later activation retries detection and installation.
-It must not bypass hook, secret, production, or destructive-action approval to
-recover from an installation failure.
+It must not bypass approval for standalone hook changes, secrets, production
+actions, or destructive actions to recover from an installation failure.
 
 ## Configuration And Documentation
 
@@ -118,9 +123,10 @@ it across every platform entry. Agent Seed instructions, platform default
 prompts, README guidance, and relevant reference files will define the expanded
 `full-access` semantics consistently.
 
-Any existing statement that installs, network access, or personal/global writes
-always require approval will be narrowed to the two approval-gated modes. Hook,
-secret, production, and destructive-action safeguards remain explicit.
+Any existing statement that installs, network access, personal/global writes,
+or install-declared hook changes always require approval will be narrowed to the
+two approval-gated modes. Standalone hook, secret, production, and
+destructive-action safeguards remain explicit.
 
 ## Verification
 
@@ -132,8 +138,10 @@ Regression tests will cover:
 - automatic installation and verification guidance across supported platforms;
 - blocking behavior after install or verification failure;
 - unchanged approval behavior in `ask-each-change` and `agent-approve`;
-- retained approval requirements for hooks, secrets, production actions, and
-  destructive actions;
+- authorization of manifest-declared install side effects, including hooks, in
+  `full-access`;
+- retained approval requirements for standalone hook changes, secrets,
+  production actions, and destructive actions;
 - consistent wording in Agent Seed instructions, platform prompts, README, and
   packaged release output.
 
