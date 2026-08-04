@@ -144,9 +144,11 @@ test("Agent Seed updater records its installed root without discarding config", 
       now: new Date("2026-08-03T10:00:00.000Z"),
     });
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
-    assert.equal(config.knowledge_asset_write_mode, "full-access");
-    assert.deepEqual(config.installation, {
+    const shared = JSON.parse(await readFile(configPath, "utf8"));
+    const local = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
+    assert.equal(shared.knowledge_asset_write_mode, "full-access");
+    assert.equal(shared.installation, undefined);
+    assert.deepEqual(local.installation, {
       skill_root: path.resolve(skillRoot),
       recorded_at: "2026-08-03T10:00:00.000Z",
     });
@@ -193,7 +195,13 @@ test("cached Agent Seed CLI checks record the installed root without a network r
       configPath,
     ], { cwd: rootDir });
     assert.equal(JSON.parse(stdout).cached, true);
-    assert.equal(JSON.parse(await readFile(configPath, "utf8")).installation.skill_root, path.resolve(skillRoot));
+    const shared = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(shared.schema_version, 2);
+    assert.equal(shared.minimum_agent_seed_version, "v1.2.3");
+    assert.equal(
+      JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8")).installation.skill_root,
+      path.resolve(skillRoot),
+    );
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
@@ -285,7 +293,7 @@ test("agent-seed updater does not reexec when env proxy support is already activ
   );
 });
 
-test("agent-seed updater persists proxy settings in the unified local config", async () => {
+test("agent-seed updater persists proxy settings in split local state", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-proxy-config-"));
 
   try {
@@ -312,12 +320,14 @@ test("agent-seed updater persists proxy settings in the unified local config", a
       },
     });
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
-    assert.equal(config.knowledge_asset_write_mode, "agent-approve");
-    assert.equal(config.self_update.proxy.https_proxy, "http://proxy.example:8080");
-    assert.equal(config.self_update.proxy.no_proxy, "localhost,127.0.0.1");
+    const shared = JSON.parse(await readFile(configPath, "utf8"));
+    const local = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
+    assert.equal(shared.knowledge_asset_write_mode, "agent-approve");
+    assert.equal(shared.self_update, undefined);
+    assert.equal(local.self_update.proxy.https_proxy, "http://proxy.example:8080");
+    assert.equal(local.self_update.proxy.no_proxy, "localhost,127.0.0.1");
 
-    const env = updater.buildProxyEnvironment({}, config);
+    const env = updater.buildProxyEnvironment({}, local);
     assert.equal(env.HTTPS_PROXY, "http://proxy.example:8080");
     assert.equal(env.NO_PROXY, "localhost,127.0.0.1");
   } finally {
@@ -465,7 +475,7 @@ test("agent-seed updater prompts for a proxy after proxy-like network failure an
       isInteractive: true,
     });
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.equal(config.self_update.proxy.https_proxy, "http://proxy.example:8080");
     assert.equal(nextEnv.HTTPS_PROXY, "http://proxy.example:8080");
   } finally {
@@ -504,7 +514,7 @@ test("agent-seed updater records denied network checks as deferred local state",
       now: new Date("2026-07-10T00:00:00.000Z"),
     });
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.equal(config.self_update.last_check.status, "deferred");
     assert.equal(config.self_update.last_check.reason, "network-denied");
     assert.equal(config.self_update.last_check.checked_at, "2026-07-10T00:00:00.000Z");
@@ -548,7 +558,7 @@ test("agent-seed updater records queued updates in unified local state", async (
       now: new Date("2026-07-19T00:00:00.000Z"),
     });
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.deepEqual(config.self_update.last_check, {
       status: "queued",
       reason: "windows-directory-locked",
@@ -612,7 +622,7 @@ test("agent-seed updater queues a locked Windows replacement and helper complete
     assert.equal(await readFile(path.join(targetDir, "VERSION.json"), "utf8"), '{"version":"v0.2.12"}\n');
     await assert.rejects(readFile(path.join(targetDir, "stale.txt"), "utf8"), /ENOENT/);
     assert.deepEqual(notifications, [{ version: "v0.2.12" }]);
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.equal(config.self_update.last_check.status, "updated");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
@@ -748,7 +758,7 @@ test("agent-seed deferred helper records timeout failures and retains diagnostic
       /Timed out waiting for update lock/,
     );
 
-    const config = JSON.parse(await readFile(configPath, "utf8"));
+    const config = JSON.parse(await readFile(path.join(rootDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.equal(config.self_update.last_check.reason, "lock-timeout");
     assert.match(await readFile(path.join(stageDir, "update.log"), "utf8"), /replacement failed/);
     const stage = JSON.parse(await readFile(path.join(stageDir, "update-stage.json"), "utf8"));

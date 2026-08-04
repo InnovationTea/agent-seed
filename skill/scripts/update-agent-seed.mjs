@@ -9,6 +9,17 @@ import { createInterface } from "node:readline/promises";
 import tls from "node:tls";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import {
+  assessMinimumAgentSeedVersion,
+  migrateAgentSeedConfig,
+  readAgentSeedFiles,
+  refreshAgentSeedBaseline,
+  resolveAgentSeedConfig,
+  writeLocalAgentSeedState,
+} from "./agent-seed-config.mjs";
+
+export { assessMinimumAgentSeedVersion, refreshAgentSeedBaseline };
+
 const DEFAULT_ASSET_NAME = "agent-seed.zip";
 const DEFAULT_CONFIG_PATH = path.join(".agents", "agent-seed.json");
 const ENV_PROXY_REEXEC_MARKER = "AGENT_SEED_ENV_PROXY_REEXEC";
@@ -143,13 +154,19 @@ async function main(argv = process.argv.slice(2)) {
   const defaultTargetDir = path.resolve(scriptDir, "..");
   const targetDir = path.resolve(options.target || defaultTargetDir);
   const isPackagedInstallation = await validateAgentSeedInstallationRoot(targetDir);
+  const versionMetadata = await readVersionMetadata(targetDir);
+  if (isStandardAgentSeedConfigPath(configPath) && versionMetadata.version) {
+    await migrateAgentSeedConfig({
+      targetDir: projectRootForConfig(configPath),
+      installedVersion: versionMetadata.version,
+    });
+  }
   if (isPackagedInstallation) {
     await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
   }
   const agentSeedConfig = await readAgentSeedConfig(configPath);
   let env = await buildProxyEnvironmentWithSystemProxy({ env: process.env, config: agentSeedConfig });
 
-  const versionMetadata = await readVersionMetadata(targetDir);
   const repository = options.repository || versionMetadata.repository;
 
   if (!repository) {
@@ -158,8 +175,13 @@ async function main(argv = process.argv.slice(2)) {
 
   const currentVersion = options.currentVersion || versionMetadata.version || "v0.0.0";
   const selfUpdate = agentSeedConfig.self_update || {};
+  const baseline = assessMinimumAgentSeedVersion({
+    installedVersion: currentVersion,
+    minimumVersion: agentSeedConfig.minimum_agent_seed_version,
+  });
   if (!options.apply && !options.forceCheck && !shouldCheckForUpdates({ selfUpdate, currentVersion })) {
     const updatePlan = buildCachedUpdatePlan(selfUpdate.last_check);
+    updatePlan.baseline = baseline;
     if (options.json) {
       console.log(JSON.stringify(updatePlan, null, 2));
     } else if (updatePlan.hasUpdate) {
@@ -193,6 +215,7 @@ async function main(argv = process.argv.slice(2)) {
     latestRelease,
     assetName: options.assetName || DEFAULT_ASSET_NAME,
   });
+  updatePlan.baseline = baseline;
   await writeAgentSeedUpdateState({
     configPath,
     status: updatePlan.hasUpdate ? "available" : "current",
@@ -287,20 +310,12 @@ export async function writeAgentSeedProxyConfig({ configPath = DEFAULT_CONFIG_PA
     ...normalizeProxyConfig(proxy),
   };
 
-  await writeAgentSeedConfig(configPath, {
-    ...config,
-    self_update: {
-      ...(config.self_update || {}),
-      proxy: nextProxy,
-    },
-  });
+  await writeAgentSeedState(configPath, { self_update: { proxy: nextProxy } });
 }
 
 export async function writeAgentSeedInstallationState({ configPath = DEFAULT_CONFIG_PATH, skillRoot, now = new Date() } = {}) {
   if (typeof skillRoot !== "string" || skillRoot.trim() === "") throw new Error("Agent Seed skill root is required.");
-  const config = await readAgentSeedConfig(configPath);
-  await writeAgentSeedConfig(configPath, {
-    ...config,
+  await writeAgentSeedState(configPath, {
     installation: {
       skill_root: path.resolve(skillRoot),
       recorded_at: now.toISOString(),
@@ -352,12 +367,8 @@ export async function writeAgentSeedUpdateState({
   latestVersion,
   now = new Date(),
 } = {}) {
-  const config = await readAgentSeedConfig(configPath);
-
-  await writeAgentSeedConfig(configPath, {
-    ...config,
+  await writeAgentSeedState(configPath, {
     self_update: {
-      ...(config.self_update || {}),
       last_check: {
         status,
         reason,
@@ -587,6 +598,21 @@ function requireValue(argv, index, optionName) {
 }
 
 async function readAgentSeedConfig(configPath) {
+  if (isStandardAgentSeedConfigPath(configPath)) {
+    const files = await readAgentSeedFiles(projectRootForConfig(configPath));
+    if (files.legacy) {
+      return {
+        ...files.shared,
+        ...pickLocalTopLevel(files.local),
+        self_update: {
+          ...(files.shared.self_update || {}),
+          ...(files.local.self_update || {}),
+        },
+      };
+    }
+    return resolveAgentSeedConfig(files);
+  }
+
   try {
     return JSON.parse(await readFile(configPath, "utf8"));
   } catch (error) {
@@ -601,6 +627,41 @@ async function readAgentSeedConfig(configPath) {
 async function writeAgentSeedConfig(configPath, config) {
   await mkdir(path.dirname(configPath), { recursive: true });
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+}
+
+async function writeAgentSeedState(configPath, patch) {
+  if (isStandardAgentSeedConfigPath(configPath)) {
+    return writeLocalAgentSeedState({ targetDir: projectRootForConfig(configPath), patch });
+  }
+  const config = await readAgentSeedConfig(configPath);
+  return writeAgentSeedConfig(configPath, mergeStatePatch(config, patch));
+}
+
+function mergeStatePatch(config, patch) {
+  return {
+    ...config,
+    ...patch,
+    self_update: {
+      ...(config.self_update || {}),
+      ...(patch.self_update || {}),
+    },
+  };
+}
+
+function isStandardAgentSeedConfigPath(configPath) {
+  const resolved = path.resolve(configPath);
+  return path.basename(resolved) === "agent-seed.json" && path.basename(path.dirname(resolved)) === ".agents";
+}
+
+function projectRootForConfig(configPath) {
+  return path.dirname(path.dirname(path.resolve(configPath)));
+}
+
+function pickLocalTopLevel(local) {
+  return {
+    ...(local.installation === undefined ? {} : { installation: local.installation }),
+    ...(local.install_prompt_history === undefined ? {} : { install_prompt_history: local.install_prompt_history }),
+  };
 }
 
 async function readVersionMetadata(targetDir) {
