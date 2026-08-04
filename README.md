@@ -50,7 +50,7 @@ guidance:
 | --- | --- | --- |
 | `.agents/agent-seed.json` | Shared Agent Seed minimum version and team policy such as write mode and startup checks. | Shared; commit it. |
 | `.agents/agent-seed.local.json` | Machine-local Agent Seed installation path, proxy, update cache, and personal audit state. | Local; ignore it. |
-| `.agents/managed-skills.json` | Shared desired versions, targets, and platforms for Agent Seed-managed bundled skills and packages. | Shared; commit it. |
+| `.agents/managed-skills.json` | Shared desired versions, targets, and platforms for managed skills, packages, and selected external integrations. | Shared; commit it. |
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
 | `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
 | `.agents/ticket-lookup/sites/` | Shared host-specific ticket navigation, parsing, and API-shape knowledge. | Shared; commit it. Never store ticket content or credentials. |
@@ -73,16 +73,21 @@ actions, secrets, and production operations still require separate approval.
 
 The first split-capable Agent Seed release migrates a legacy unified
 `.agents/agent-seed.json` into shared and local files, preserves unknown legacy
-fields in local state, and repairs the project's Git ignore rules. New Agent
+fields in local state, and repairs the target project's Git ignore rules. This
+does not change the Agent Seed source repository's own Git policy. New Agent
 Seed releases read legacy configuration; old releases are not expected to
 write the new split format safely.
+
+Migration validates known legacy field shapes before writing. Unsupported or
+malformed state is left unchanged and reported instead of being partially
+rewritten.
 
 `agent-seed-updater` is an approval-gated bundled direct skill for Codex,
 Claude Code, codeagent-cli, and OpenCode. Agent Seed installs its canonical
 `AGENTS.md` rule so it runs exactly once before the first project task in each
 new conversation. It calls `check-agent-seed-updates.mjs`, which combines the
-existing cached Agent Seed self-update check with the local managed-skill
-manifest check. It does not run Agent Seed onboarding or perform a repository
+existing cached Agent Seed self-update check with shared desired-state and
+target installation checks. It does not run Agent Seed onboarding or perform a repository
 scan. Codex and OpenCode read `AGENTS.md` directly; Claude Code and
 codeagent-cli use the root `CLAUDE.md` import.
 
@@ -218,11 +223,13 @@ node scripts/update-agent-seed.mjs --refresh-baseline --approved
 
 ## Managed Skill Updates
 
-When Agent Seed installs a bundled direct skill or package into a project, the
-team's desired version and target platform live in the committed
-`.agents/managed-skills.json`. Actual target presence is checked on each
-machine. Personal `declined_install_offers` and external integration
-observations live under `.agents/agent-seed.local.json` and are never shared.
+When Agent Seed installs a bundled direct skill, package, or selected external
+integration, the team's desired version and target platform live in the
+committed `.agents/managed-skills.json`. Managed target directories contain a
+non-sensitive `.agent-seed-managed.json` version marker written only after a
+successful approved install. External integration availability and actual
+versions are recorded under `.agents/agent-seed.local.json`. Personal
+`declined_install_offers` also remain local and are never shared.
 At the start of a new conversation, the installed
 `agent-seed-updater` runs the combined preflight for the project platform:
 
@@ -231,8 +238,13 @@ node scripts/check-agent-seed-updates.mjs <target-project> --platform <platform>
 ```
 
 The Agent Seed part keeps the existing 24-hour cache and approval-gated apply
-behavior. The managed part reports `current`, `update-available`, `missing`,
-`legacy-unmanaged`, `install-available`, or `declined-current-version`. A
+behavior. Missing or invalid Agent Seed version/baseline evidence is `unknown`,
+and an apply candidate below the committed minimum is rejected. The managed
+part reports `current`, `update-available`, `missing`,
+`unverified`, `baseline-unavailable`, `legacy-unmanaged`, `install-available`,
+or `declined-current-version`. `baseline-unavailable` also covers a shared
+entry or version that the installed Agent Seed manifest cannot supply, even
+when the local target is also missing. A
 declined current version is diagnostic-only and the same version is suppressed
 instead of prompting again. A higher manifest version prompts again. Deferring
 or ignoring an offer does not record a decline.
@@ -258,9 +270,13 @@ that recheck until the next conversation after replacement completes.
 Direct skills are staged and replaced with rollback on verification failure.
 Bundled packages use their existing installer with backups of their declared
 write roots. A legacy unrecorded installation is force-replaced only after the
-same approval, then becomes managed. External integrations remain owned by
-their platform; Agent Seed records their status and invokes only a
-platform-native update action after separate approval.
+same approval, then becomes managed. Apply operations reject versions below
+either the shared baseline or verified installed marker. A successful install
+of a higher managed version advances `.agents/managed-skills.json`; review and
+commit that team baseline change. External integrations follow the same
+no-downgrade shared-baseline rule but remain owned by their platform; Agent Seed
+records their local status and invokes only a platform-native update action
+after separate approval.
 
 Startup `agent-seed-updater`, onboarding `agent-seed`, and end-of-task
 `knowledge-updater` have separate responsibilities. `knowledge-updater` runs

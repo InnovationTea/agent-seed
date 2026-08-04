@@ -19,7 +19,11 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
 export async function readAgentSeedFiles(targetDir) {
   const root = path.resolve(targetDir);
   const shared = await readJsonIfExists(path.join(root, SHARED_CONFIG_FILE));
+  if (Number.isInteger(shared?.schema_version) && shared.schema_version > 2) {
+    throw new Error(`Unsupported future Agent Seed config schema: ${shared.schema_version}`);
+  }
   const local = await readJsonIfExists(path.join(root, LOCAL_CONFIG_FILE));
+  assertSupportedLocalSchema(local);
   return {
     shared: shared || {},
     local: local || {},
@@ -74,6 +78,7 @@ export async function refreshAgentSeedBaseline({ targetDir, installedVersion, ap
 
 export function splitLegacyAgentSeedConfig(legacy, installedVersion) {
   if (!isPlainObject(legacy)) throw new Error("Invalid legacy Agent Seed config.");
+  assertValidLegacyFields(legacy);
   const baseline = selectInitialBaseline(legacy.minimum_agent_seed_version, installedVersion);
   const sharedSelfUpdate = pickObjectKeys(legacy.self_update, SHARED_SELF_UPDATE_KEYS);
   const localSelfUpdate = pickObjectKeys(legacy.self_update, LOCAL_SELF_UPDATE_KEYS);
@@ -115,7 +120,7 @@ export async function migrateAgentSeedConfig({ targetDir, installedVersion } = {
   const local = mergeLocalState(split.local, files.local);
   await writeJsonAtomic(path.join(path.resolve(targetDir), LOCAL_CONFIG_FILE), local);
   await writeJsonAtomic(path.join(path.resolve(targetDir), SHARED_CONFIG_FILE), split.shared);
-  await updateGitignore(path.resolve(targetDir));
+  await ensureAgentSeedGitignore(path.resolve(targetDir));
   return { status: "migrated", shared: split.shared, local };
 }
 
@@ -128,9 +133,14 @@ export async function writeLocalAgentSeedState({ targetDir, patch }) {
   if (!isPlainObject(patch)) throw new Error("Local Agent Seed state patch must be an object.");
   const localPath = path.join(path.resolve(targetDir), LOCAL_CONFIG_FILE);
   const current = (await readJsonIfExists(localPath)) || {};
+  assertSupportedLocalSchema(current);
   const next = mergeLocalState(current, { schema_version: 1, ...patch });
   await writeJsonAtomic(localPath, next);
   return next;
+}
+
+export async function ensureAgentSeedGitignore(targetDir) {
+  return updateGitignore(path.resolve(targetDir));
 }
 
 function isLegacyConfig(config) {
@@ -138,6 +148,43 @@ function isLegacyConfig(config) {
   if (config.installation !== undefined || config.install_prompt_history !== undefined) return true;
   const selfUpdate = isPlainObject(config.self_update) ? config.self_update : {};
   return [...LOCAL_SELF_UPDATE_KEYS].some((key) => selfUpdate[key] !== undefined);
+}
+
+function assertSupportedLocalSchema(local) {
+  if (Number.isInteger(local?.schema_version) && local.schema_version > 1) {
+    throw new Error(`Unsupported future Agent Seed local schema: ${local.schema_version}`);
+  }
+  if (local?.schema_version !== undefined && local.schema_version !== 1) {
+    throw new Error(`Invalid Agent Seed local schema: ${local.schema_version}`);
+  }
+  assertOptionalObject(local, "self_update", "Agent Seed local");
+  assertOptionalObject(local, "installation", "Agent Seed local");
+  assertOptionalObject(local, "legacy_unclassified", "Agent Seed local");
+  assertOptionalObject(local, "managed_skills", "Agent Seed local");
+  if (local?.install_prompt_history !== undefined && !Array.isArray(local.install_prompt_history)) {
+    throw new Error("Invalid Agent Seed local field: install_prompt_history");
+  }
+}
+
+function assertValidLegacyFields(legacy) {
+  assertOptionalObject(legacy, "self_update", "legacy Agent Seed");
+  assertOptionalObject(legacy, "installation", "legacy Agent Seed");
+  assertOptionalObject(legacy, "legacy_unclassified", "legacy Agent Seed");
+  if (legacy.install_prompt_history !== undefined && !Array.isArray(legacy.install_prompt_history)) {
+    throw new Error("Invalid legacy Agent Seed field: install_prompt_history");
+  }
+  if (legacy.knowledge_asset_write_mode !== undefined && typeof legacy.knowledge_asset_write_mode !== "string") {
+    throw new Error("Invalid legacy Agent Seed field: knowledge_asset_write_mode");
+  }
+  if (legacy.minimum_agent_seed_version !== undefined && !normalizeVersion(legacy.minimum_agent_seed_version)) {
+    throw new Error("Invalid legacy Agent Seed field: minimum_agent_seed_version");
+  }
+}
+
+function assertOptionalObject(value, key, label) {
+  if (value?.[key] !== undefined && !isPlainObject(value[key])) {
+    throw new Error(`Invalid ${label} field: ${key}`);
+  }
 }
 
 function mergeLocalState(base, override) {
@@ -235,18 +282,18 @@ async function updateGitignore(targetDir) {
   try {
     content = await readFile(gitignorePath, "utf8");
   } catch (error) {
-    if (error.code === "ENOENT") return false;
-    throw error;
+    if (error.code === "ENOENT") content = "";
+    else throw error;
   }
 
   const lines = content.split(/\r?\n/);
   const filtered = lines.filter((line) => ![".agents/agent-seed.json", ".agents/managed-skills.json"].includes(line.trim()));
-  const hasBroadAgentsIgnore = filtered.some((line) => [".agents/", ".agents/*.json", ".agents/**"].includes(line.trim()));
-  const required = hasBroadAgentsIgnore ? ["!.agents/"] : [];
-  required.push(".agents/agent-seed.local.json");
-  if (hasBroadAgentsIgnore) {
-    required.push("!.agents/agent-seed.json", "!.agents/managed-skills.json");
-  }
+  const required = [
+    "!.agents/",
+    ".agents/agent-seed.local.json",
+    "!.agents/agent-seed.json",
+    "!.agents/managed-skills.json",
+  ];
   for (const line of required) {
     if (!filtered.some((existing) => existing.trim() === line)) filtered.push(line);
   }

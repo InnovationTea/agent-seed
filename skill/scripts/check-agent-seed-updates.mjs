@@ -26,10 +26,20 @@ export async function runAgentSeedPreflight({
   } else {
     try {
       const update = await runSelfUpdate({ skillRoot, targetDir });
+      const baselineState = update.baseline?.state;
       result.agent_seed = {
-        state: update.hasUpdate ? "update-available" : "current",
+        state: baselineState === "version-incompatible"
+          ? "version-incompatible"
+          : baselineState === "unconfigured"
+            ? "unknown"
+          : update.hasUpdate
+            ? "update-available"
+            : baselineState === "baseline-refresh-available"
+              ? "baseline-refresh-available"
+              : "current",
         current_version: update.currentVersion,
         available_version: update.latestVersion,
+        ...(update.baseline?.minimum_version ? { minimum_version: update.baseline.minimum_version } : {}),
         cached: update.cached === true,
       };
     } catch (error) {
@@ -112,6 +122,12 @@ async function runCli(args) {
   const lines = [];
   if (result.agent_seed.state === "update-available") {
     lines.push(`agent-seed: update-available (${result.agent_seed.current_version} -> ${result.agent_seed.available_version})`);
+  } else if (result.agent_seed.state === "version-incompatible") {
+    lines.push(`agent-seed: version-incompatible (${result.agent_seed.current_version} < ${result.agent_seed.minimum_version})`);
+  } else if (result.agent_seed.state === "baseline-refresh-available") {
+    lines.push(`agent-seed: baseline-refresh-available (${result.agent_seed.minimum_version} -> ${result.agent_seed.current_version})`);
+  } else if (result.agent_seed.state === "unknown") {
+    lines.push("agent-seed: unknown (missing or invalid version baseline evidence)");
   }
   for (const entry of result.managed.filter((candidate) => !["current", "declined-current-version"].includes(candidate.state))) {
     lines.push(`${entry.name}: ${entry.state}`);

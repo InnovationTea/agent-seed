@@ -20,6 +20,8 @@ test("inspectManagedUpdates reports current, available, missing, and legacy dire
     await mkdir(path.join(targetDir, "skills", "gitpush"), { recursive: true });
     await mkdir(path.join(targetDir, "skills", "gittag"), { recursive: true });
     await mkdir(path.join(targetDir, "skills", "gitsync"), { recursive: true });
+    await writeManagedMarker(path.join(targetDir, "skills", "gitpush"), "gitpush", "v1.0.0");
+    await writeManagedMarker(path.join(targetDir, "skills", "gittag"), "gittag", "v1.1.0");
     await mkdir(path.join(targetDir, ".agents"), { recursive: true });
     await writeFile(
       path.join(targetDir, ".agents", "managed-skills.json"),
@@ -42,7 +44,7 @@ test("inspectManagedUpdates reports current, available, missing, and legacy dire
       [
         { name: "gitpush", state: "update-available", installed_version: "v1.0.0", available_version: "v1.1.0" },
         { name: "gittag", state: "current", installed_version: "v1.1.0", available_version: "v1.1.0" },
-        { name: "gitsync", state: "missing", installed_version: "v1.1.0", available_version: "v1.1.0" },
+        { name: "gitsync", state: "missing", installed_version: null, available_version: "v1.1.0" },
       ],
     );
 
@@ -63,6 +65,7 @@ test("readManagedState returns an empty state for an unmanaged project", async (
       managed_skills: [],
       external_integrations: [],
       declined_install_offers: [],
+      installed_external_integrations: [],
     });
   } finally {
     await rm(targetDir, { recursive: true, force: true });
@@ -125,6 +128,7 @@ test("read-only inspection normalizes schema v1 without rewriting it", async () 
       managed_skills: [],
       external_integrations: [],
       declined_install_offers: [],
+      installed_external_integrations: [],
     });
     await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
     assert.equal(await readFile(statePath, "utf8"), original);
@@ -133,7 +137,168 @@ test("read-only inspection normalizes schema v1 without rewriting it", async () 
   }
 });
 
-test("managed state migration moves personal records to Agent Seed local state", async () => {
+test("managed state reads reject unknown shared fields without rewriting", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unknown-read-"));
+  const statePath = path.join(targetDir, ".agents", "managed-skills.json");
+
+  try {
+    const original = `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [],
+      future_state: { keep: true },
+    })}\n`;
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(statePath, original);
+
+    await assert.rejects(manager.readManagedState(targetDir), /Unsupported managed skill state field: future_state/);
+    assert.equal(await readFile(statePath, "utf8"), original);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("managed state reads reject future schemas without rewriting", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-future-schema-"));
+  const statePath = path.join(targetDir, ".agents", "managed-skills.json");
+
+  try {
+    const original = `${JSON.stringify({ schema_version: 3, managed_skills: [], external_integrations: [] })}\n`;
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(statePath, original);
+
+    await assert.rejects(manager.readManagedState(targetDir), /Unsupported future managed skill schema: 3/);
+    assert.equal(await readFile(statePath, "utf8"), original);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("managed inspection does not claim current without target version metadata", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unverified-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(path.join(targetDir, "skills", "gitpush"), { recursive: true });
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.1.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.managed.find((entry) => entry.name === "gitpush").state, "unverified");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed inspection does not compare an invalid target marker version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-invalid-marker-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+  const targetPath = path.join(targetDir, "skills", "gitpush");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(targetPath, { recursive: true });
+    await writeFile(path.join(targetPath, ".agent-seed-managed.json"), `${JSON.stringify({
+      name: "gitpush",
+      kind: "direct-skill",
+      version: "not-a-version",
+      platform: "codex",
+    })}\n`);
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.2.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.managed.find((entry) => entry.name === "gitpush").state, "baseline-unavailable");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed inspection reports a shared baseline unavailable from the installed Agent Seed", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unavailable-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(path.join(targetDir, "skills", "gitpush"), { recursive: true });
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.2.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.managed.find((entry) => entry.name === "gitpush").state, "baseline-unavailable");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("an unavailable shared baseline takes precedence over a missing target", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unavailable-missing-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.2.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.managed.find((entry) => entry.name === "gitpush").state, "baseline-unavailable");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed inspection reports shared entries missing from the installed Agent Seed manifest", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unknown-baseline-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("future-skill", "v1.2.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.deepEqual(report.managed.find((entry) => entry.name === "future-skill"), {
+      name: "future-skill",
+      kind: "direct-skill",
+      platform: "codex",
+      target_path: "skills/future-skill",
+      installed_version: null,
+      available_version: null,
+      required_version: "v1.2.0",
+      state: "baseline-unavailable",
+    });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed state migration preserves external desired state and moves personal declines local", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-migration-"));
   const targetDir = path.join(rootDir, "target");
   const statePath = path.join(targetDir, ".agents", "managed-skills.json");
@@ -151,13 +316,36 @@ test("managed state migration moves personal records to Agent Seed local state",
     assert.deepEqual(result, { status: "migrated" });
     const shared = JSON.parse(await readFile(statePath, "utf8"));
     assert.deepEqual(shared.managed_skills, [record("gitpush", "v1.1.0")]);
-    assert.equal(shared.external_integrations, undefined);
+    assert.equal(shared.external_integrations[0].name, "opencli");
     assert.equal(shared.declined_install_offers, undefined);
     const local = JSON.parse(await readFile(path.join(targetDir, ".agents", "agent-seed.local.json"), "utf8"));
     assert.equal(local.managed_skills.declined_install_offers.length, 1);
     assert.equal(local.managed_skills.external_integrations[0].name, "opencli");
   } finally {
     await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed state migration rejects unknown legacy fields without rewriting", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-unknown-migration-"));
+  const statePath = path.join(targetDir, ".agents", "managed-skills.json");
+
+  try {
+    const legacy = `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [],
+      declined_install_offers: [],
+      future_state: { keep: true },
+    })}\n`;
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(statePath, legacy);
+
+    await assert.rejects(manager.migrateManagedState(targetDir), /Unsupported managed skill state field: future_state/);
+    assert.equal(await readFile(statePath, "utf8"), legacy);
+    await assert.rejects(readFile(path.join(targetDir, ".agents", "agent-seed.local.json"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
   }
 });
 
@@ -176,6 +364,8 @@ test("applyManagedUpdate replaces an approved direct skill and records its versi
     await manager.applyManagedUpdate({ skillRoot, targetDir, name: "gitpush", platform: "codex", approved: true });
 
     assert.equal(await readFile(path.join(targetDir, "skills", "gitpush", "SKILL.md"), "utf8"), "new skill\n");
+    const metadata = JSON.parse(await readFile(path.join(targetDir, "skills", "gitpush", ".agent-seed-managed.json"), "utf8"));
+    assert.deepEqual(metadata, { name: "gitpush", kind: "direct-skill", version: "v1.1.0", platform: "codex" });
     assert.equal((await manager.readManagedState(targetDir)).managed_skills[0].version, "v1.1.0");
     await assert.rejects(
       manager.applyManagedUpdate({ skillRoot, targetDir, name: "gitpush", platform: "codex", approved: false }),
@@ -358,12 +548,169 @@ test("external integrations record ownership and require approval for native upd
       version: "unknown",
     });
     assert.deepEqual(state.external_integrations, [{ name: "opencli", platform: "codex", ownership: "agent-seed-assisted", version: "unknown" }]);
+    const shared = JSON.parse(await readFile(path.join(targetDir, ".agents", "managed-skills.json"), "utf8"));
+    assert.deepEqual(shared.external_integrations, state.external_integrations);
+    const local = JSON.parse(await readFile(path.join(targetDir, ".agents", "agent-seed.local.json"), "utf8"));
+    assert.deepEqual(local.managed_skills.external_integrations, state.external_integrations);
     await assert.rejects(manager.applyExternalUpdate({ approved: false, nativeUpdate: async () => true }), /Owner approval is required/);
     let invoked = false;
     assert.equal(await manager.applyExternalUpdate({ approved: true, nativeUpdate: async () => { invoked = true; } }), true);
     assert.equal(invoked, true);
     const report = await manager.inspectManagedUpdates({ skillRoot: await createEmptySkillRoot(targetDir), targetDir, platform: "codex" });
     assert.equal(report.external[0].state, "version-unknown");
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("managed update refreshes a lower shared baseline after installing a newer manifest version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-refresh-baseline-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeManifest(skillRoot, "v1.2.0");
+    await mkdir(path.join(skillRoot, "bundled-skills", "gitpush", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "gitpush", "skill", "SKILL.md"), "new skill\n");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.1.0")],
+      external_integrations: [{ name: "opencli", platform: "codex", ownership: "user-scope", version: "v2.0.0" }],
+    })}\n`);
+
+    await manager.applyManagedUpdate({ skillRoot, targetDir, name: "gitpush", platform: "codex", approved: true });
+
+    const shared = JSON.parse(await readFile(path.join(targetDir, ".agents", "managed-skills.json"), "utf8"));
+    assert.equal(shared.managed_skills[0].version, "v1.2.0");
+    assert.equal(shared.external_integrations[0].version, "v2.0.0");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed update refuses to install below the shared or installed version", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-no-downgrade-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+  const targetPath = path.join(targetDir, "skills", "gitpush");
+
+  try {
+    await writeManifest(skillRoot, "v1.1.0");
+    await mkdir(path.join(skillRoot, "bundled-skills", "gitpush", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "gitpush", "skill", "SKILL.md"), "older skill\n");
+    await mkdir(targetPath, { recursive: true });
+    await writeFile(path.join(targetPath, "SKILL.md"), "newer skill\n");
+    await writeManagedMarker(targetPath, "gitpush", "v1.3.0");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.2.0")],
+      external_integrations: [],
+    })}\n`);
+
+    await assert.rejects(
+      manager.applyManagedUpdate({ skillRoot, targetDir, name: "gitpush", platform: "codex", approved: true }),
+      /refusing to downgrade.*v1\.1\.0/i,
+    );
+    assert.equal(await readFile(path.join(targetPath, "SKILL.md"), "utf8"), "newer skill\n");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("shared external desired state reports missing actual installation", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-external-missing-"));
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [{ name: "opencli", platform: "codex", ownership: "agent-seed-assisted", version: "unknown" }],
+    })}\n`);
+    const report = await manager.inspectManagedUpdates({
+      skillRoot: await createEmptySkillRoot(targetDir),
+      targetDir,
+      platform: "codex",
+    });
+    assert.deepEqual(report.external, [{
+      name: "opencli",
+      platform: "codex",
+      ownership: "agent-seed-assisted",
+      version: "unknown",
+      state: "missing",
+    }]);
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("external desired version detects local version drift without downgrading newer installs", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-external-drift-"));
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [{ name: "opencli", platform: "codex", ownership: "user-scope", version: "v2.0.0" }],
+    })}\n`);
+    await writeFile(path.join(targetDir, ".agents", "agent-seed.local.json"), `${JSON.stringify({
+      schema_version: 1,
+      managed_skills: {
+        external_integrations: [{ name: "opencli", platform: "codex", ownership: "user-scope", version: "v1.0.0" }],
+      },
+    })}\n`);
+    const skillRoot = await createEmptySkillRoot(targetDir);
+    let report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.external[0].state, "update-available");
+
+    await writeFile(path.join(targetDir, ".agents", "agent-seed.local.json"), `${JSON.stringify({
+      schema_version: 1,
+      managed_skills: {
+        external_integrations: [{ name: "opencli", platform: "codex", ownership: "user-scope", version: "v3.0.0" }],
+      },
+    })}\n`);
+    report = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(report.external[0].state, "available");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("recording an external integration refreshes but never lowers the shared desired version", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-external-baseline-"));
+
+  try {
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [],
+      external_integrations: [{ name: "opencli", platform: "codex", ownership: "user-scope", version: "v2.0.0" }],
+    })}\n`);
+
+    await manager.recordExternalIntegration({
+      targetDir,
+      name: "opencli",
+      platform: "codex",
+      ownership: "user-scope",
+      version: "v1.0.0",
+    });
+    let shared = JSON.parse(await readFile(path.join(targetDir, ".agents", "managed-skills.json"), "utf8"));
+    assert.equal(shared.external_integrations[0].version, "v2.0.0");
+
+    await manager.recordExternalIntegration({
+      targetDir,
+      name: "opencli",
+      platform: "codex",
+      ownership: "user-scope",
+      version: "v3.0.0",
+    });
+    shared = JSON.parse(await readFile(path.join(targetDir, ".agents", "managed-skills.json"), "utf8"));
+    assert.equal(shared.external_integrations[0].version, "v3.0.0");
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }
@@ -378,6 +725,15 @@ function record(name, version) {
     target_path: `skills/${name}`,
     source: `bundled-skills/${name}/skill`,
   };
+}
+
+async function writeManagedMarker(targetPath, name, version) {
+  await writeFile(path.join(targetPath, ".agent-seed-managed.json"), `${JSON.stringify({
+    name,
+    kind: "direct-skill",
+    version,
+    platform: "codex",
+  })}\n`);
 }
 
 async function writeManifest(skillRoot, version = "v1.1.0") {

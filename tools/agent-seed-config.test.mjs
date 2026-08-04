@@ -8,6 +8,7 @@ import { promisify } from "node:util";
 
 import {
   assessMinimumAgentSeedVersion,
+  ensureAgentSeedGitignore,
   migrateAgentSeedConfig,
   readAgentSeedFiles,
   refreshAgentSeedBaseline,
@@ -147,6 +148,71 @@ test("migration adds parent negations for broad Agent config ignores", async () 
       execFileAsync("git", ["check-ignore", "--no-index", ".agents/agent-seed.json"], { cwd: targetDir }),
       { code: 1 },
     );
+    await assert.rejects(
+      execFileAsync("git", ["check-ignore", "--no-index", ".agents/managed-skills.json"], { cwd: targetDir }),
+      { code: 1 },
+    );
+    const localIgnore = await execFileAsync(
+      "git",
+      ["check-ignore", "--no-index", ".agents/agent-seed.local.json"],
+      { cwd: targetDir },
+    );
+    assert.match(localIgnore.stdout, /agent-seed\.local\.json/);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("Git ignore repair works without a legacy Agent Seed config", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-ignore-only-"));
+  try {
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".gitignore"), ".agents/agent-seed.json\n.agents/managed-skills.json\n");
+
+    const changed = await ensureAgentSeedGitignore(targetDir);
+    assert.equal(changed, true);
+    const gitignore = await readFile(path.join(targetDir, ".gitignore"), "utf8");
+    assert.doesNotMatch(gitignore, /^\.agents\/agent-seed\.json$/m);
+    assert.doesNotMatch(gitignore, /^\.agents\/managed-skills\.json$/m);
+    assert.match(gitignore, /^\.agents\/agent-seed\.local\.json$/m);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("migration refuses to downgrade a future shared config schema", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-future-schema-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    const sharedPath = path.join(agentsDir, "agent-seed.json");
+    const future = `${JSON.stringify({ schema_version: 3, future_policy: true })}\n`;
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(sharedPath, future);
+
+    await assert.rejects(
+      migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" }),
+      /Unsupported future Agent Seed config schema: 3/,
+    );
+    assert.equal(await readFile(sharedPath, "utf8"), future);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("local state writer refuses to overwrite a future local schema", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-future-local-schema-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    const localPath = path.join(agentsDir, "agent-seed.local.json");
+    const future = `${JSON.stringify({ schema_version: 2, future_local_state: true })}\n`;
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(localPath, future);
+
+    await assert.rejects(
+      writeLocalAgentSeedState({ targetDir, patch: { self_update: { last_check: { status: "current" } } } }),
+      /Unsupported future Agent Seed local schema: 2/,
+    );
+    assert.equal(await readFile(localPath, "utf8"), future);
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }
@@ -184,6 +250,30 @@ test("migration leaves a malformed legacy file unchanged", async () => {
 
     await assert.rejects(migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" }), SyntaxError);
     assert.equal(await readFile(sharedPath, "utf8"), "{ invalid json\n");
+    await assert.rejects(readFile(path.join(agentsDir, "agent-seed.local.json"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("migration rejects malformed known legacy fields without rewriting", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-invalid-shape-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    const sharedPath = path.join(agentsDir, "agent-seed.json");
+    const legacy = `${JSON.stringify({
+      knowledge_asset_write_mode: "full-access",
+      self_update: "invalid",
+      install_prompt_history: { decision: "approved" },
+    })}\n`;
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(sharedPath, legacy);
+
+    await assert.rejects(
+      migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" }),
+      /Invalid legacy Agent Seed field: self_update/,
+    );
+    assert.equal(await readFile(sharedPath, "utf8"), legacy);
     await assert.rejects(readFile(path.join(agentsDir, "agent-seed.local.json"), "utf8"), { code: "ENOENT" });
   } finally {
     await rm(targetDir, { recursive: true, force: true });
