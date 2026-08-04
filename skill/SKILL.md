@@ -13,12 +13,23 @@ This skill can also distribute bundled direct skills listed in `bundled-skills.j
 
 ## Version And Self Update
 
-Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. On every Agent Seed activation, complete this self-update preflight before onboarding conclusions in this order: read `VERSION.json` from this skill root when present, read the local `.agents/agent-seed.json` state from the target root when present, then run `node scripts/update-agent-seed.mjs --json` unless the owner explicitly asks to skip the check or the local config sets `self_update.check_on_start` to `false`.
+Released packages include `VERSION.json` with the packaged skill version, repository, commit, primary release asset, and release manifest name. On every Agent Seed activation, complete this self-update preflight before onboarding conclusions in this order: read `VERSION.json` from this skill root when present, resolve shared `.agents/agent-seed.json` policy with local `.agents/agent-seed.local.json` state, then run `node scripts/update-agent-seed.mjs --json` unless the owner explicitly asks to skip the check or shared policy sets `self_update.check_on_start` to `false`.
 
 The updater checks the GitHub latest release API for the configured repository and compares the local version with the latest tag:
 
 ```bash
 node scripts/update-agent-seed.mjs --json
+```
+
+The shared `minimum_agent_seed_version` is the team's compatibility baseline.
+An installed version below it requires an approved update. An equal version is
+current. A newer installed version is accepted without downgrade and may be
+used to propose a baseline refresh; startup never edits the shared baseline.
+
+After owner approval, refresh the shared baseline with:
+
+```bash
+node scripts/update-agent-seed.mjs --refresh-baseline --approved
 ```
 
 By default, `self_update.check_interval_hours` is 24. A successful `current` or `available` result inside that window is returned from local state without a network request; malformed, deferred, queued, failed, or expired state always triggers a fresh check. Use `node scripts/update-agent-seed.mjs --json --force-check` to bypass the cache. Invoking `/agent-seed` authorizes this GitHub latest-release check and recording the resulting local check state. If the check cannot run because the owner withdraws authorization or network execution fails, do not treat Agent Seed as current or checked. When local-state writes are authorized, record an owner-declined check as `self_update.last_check.status: "deferred"` with `reason: "network-denied"`, then continue the rest of the Activation Preflight and report that update status is unknown.
@@ -37,19 +48,31 @@ When `--apply` is approved, the updater downloads `agent-seed.zip`, expands it, 
 
 On Windows, the current agent host may lock the installed skill directory. If an approved replacement hits that lock, the updater stages the verified package in the current user's local application-data directory, records `status: "queued"` with `reason: "windows-directory-locked"`, and starts an external helper. The update automatically completes after the agent host exits and releases the directory lock. Do not run another update command while it is queued. After it verifies the installed version, the helper records `updated` and sends a best-effort Windows desktop notification that the new version is ready for the next session; failure to show that notification does not change update status. Only a terminal `failed` state requires another `--apply` command.
 
-Use `.agents/agent-seed.json` as the unified local Agent Seed config and state file. Proxy settings for the updater live under `self_update.proxy`; for example:
+Use `.agents/agent-seed.json` for shared Agent Seed policy and
+`.agents/agent-seed.local.json` for machine-local state. Proxy settings for the
+updater live under the local file; for example:
 
 ```json
 {
+  "schema_version": 2,
+  "minimum_agent_seed_version": "v0.3.8",
   "knowledge_asset_write_mode": "full-access",
+  "self_update": {
+    "check_on_start": true,
+    "check_interval_hours": 24,
+    "update_mode": "notify"
+  }
+}
+```
+
+```json
+{
+  "schema_version": 1,
   "installation": {
     "skill_root": "C:/Users/example/.codex/skills/agent-seed",
     "recorded_at": "2026-08-03T10:00:00.000Z"
   },
   "self_update": {
-    "check_on_start": true,
-    "check_interval_hours": 24,
-    "update_mode": "notify",
     "proxy": {
       "https_proxy": "http://proxy.example:8080",
       "no_proxy": "localhost,127.0.0.1"
@@ -71,9 +94,25 @@ Use `.agents/agent-seed.json` as the unified local Agent Seed config and state f
 }
 ```
 
-This file may contain machine-specific proxy settings or local permission history. It is local state, not a shared onboarding asset. When creating it in a target project, ensure `.gitignore` contains `.agents/agent-seed.json`. To persist proxy settings through the updater, use `node scripts/update-agent-seed.mjs --set-https-proxy <url>` and optionally `--set-no-proxy <hosts>`. If no updater or environment proxy is configured, the updater may reuse Git's `http.proxy`/`https.proxy` settings or, on Windows, the current user's explicit system proxy settings for the GitHub release check. In an interactive terminal, if the update check fails with a proxy-like network error and no proxy is configured, the updater may ask for an HTTPS proxy URL, save it here, and retry once.
+The shared file is committed and contains no proxy, installation path, update
+cache, or personal history. The local file is ignored by Git. When creating a
+new project configuration, add `.agents/agent-seed.local.json` to `.gitignore`
+and keep `.agents/agent-seed.json` trackable. To persist proxy settings through
+the updater, use `node scripts/update-agent-seed.mjs --set-https-proxy <url>`
+and optionally `--set-no-proxy <hosts>`. If no updater or environment proxy is
+configured, the updater may reuse Git's `http.proxy`/`https.proxy` settings or,
+on Windows, the current user's explicit system proxy settings for the GitHub
+release check. In an interactive terminal, if the update check fails with a
+proxy-like network error and no proxy is configured, the updater may ask for an
+HTTPS proxy URL, save it to the local file, and retry once.
 
 `install_prompt_history` is best-effort local audit history. On a declined recurring integration, append the activation time, platform, integration, decision, and owner-provided reason. Never interpret this history as an opt-out or skip marker. If the local state cannot be written, report that limitation and continue after capturing the reason in the current result.
+
+The first split-capable Agent Seed release migrates a legacy unified
+`.agents/agent-seed.json` into shared and local files, preserves unknown legacy
+fields in local state, and repairs the project's Git ignore rules. New Agent
+Seed releases read legacy configuration; old releases are not expected to
+write the new split format safely.
 
 ## Agent Seed Updater
 
@@ -86,7 +125,7 @@ onboarding skill.
 Offer `agent-seed-updater` for every detected, requested, or owner-confirmed
 platform according to `bundled-skills.json`. Installation and the corresponding
 project-instruction edits require owner approval. The normal self-update command
-records the installed root under `.agents/agent-seed.json.installation` so the
+records the installed root under `.agents/agent-seed.local.json.installation` so the
 project-local updater can locate the packaged scripts and manifests without
 searching personal or global skill directories.
 
@@ -99,7 +138,7 @@ without blocking the requested task. Codex and OpenCode read the rule directly.
 For Claude Code and codeagent-cli, ensure the root `CLAUDE.md` imports
 `@AGENTS.md`.
 
-The manager uses schema version 2 in `.agents/managed-skills.json`. It reports
+The manager uses schema version 2 in shared `.agents/managed-skills.json`. It reports
 `install-available` for new applicable default offers and retains
 `declined-current-version` only as a quiet diagnostic. Record a decline only
 after the owner explicitly rejects that exact manifest version. The same
@@ -118,7 +157,7 @@ manager preflight and preserve unrelated project instructions. Do not use this
 migration to scan the repository, interview the owner, or repeat knowledge
 distillation.
 
-Use `.agents/managed-skills.json` only for Agent Seed-managed bundled skills
+Use shared `.agents/managed-skills.json` only for Agent Seed-managed bundled skills
 and packages. For `external-packages.json` integrations, record availability
 and ownership when useful, but use the platform-native update action after
 separate owner approval. Never copy, delete, or replace an external plugin
@@ -167,15 +206,17 @@ After the target root is known, perform a minimal platform-evidence scan inside 
 
 Do not continue with onboarding work until each applicable default or recommended item is accepted, declined, already available, platform-inapplicable, or explicitly deferred. Specifically, do not present the scan summary, begin owner interviews, generate files, or claim no installs are needed until this is resolved. Record the reason when an applicable install is skipped. Never run an install command, copy skill files, modify hooks, network access other than the authorized read-only self-update check, or write personal/global directories without owner approval.
 
-Persist the target project's local Agent Seed preferences and state in `.agents/agent-seed.json`:
+Persist the target project's shared Agent Seed policy in `.agents/agent-seed.json`:
 
 ```json
 {
+  "schema_version": 2,
+  "minimum_agent_seed_version": "v0.3.8",
   "knowledge_asset_write_mode": "full-access"
 }
 ```
 
-Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over the project config, then `.agents/agent-seed.json`, then default to `full-access`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, and generated project skill guidance. If the config file is missing during onboarding, use `full-access` unless the user selects another mode.
+Supported modes are `ask-each-change`, `agent-approve`, and `full-access`. The current user request wins over shared `.agents/agent-seed.json`, then default to `full-access`. Apply this mode to writes under `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, and generated project skill guidance. If the shared config is missing during onboarding, use `full-access` unless the user selects another mode.
 
 Treat external agent workflow suites listed in `external-packages.json` as recommended platform plugins, not bundled packages, unless the user explicitly asks to vendor them. If a configured plugin applies to the owner's platform and is not visible in the current agent environment or project platform config, recommend installing it through the platform's normal network-backed plugin flow instead of copying its internals into the project.
 
@@ -236,14 +277,14 @@ Determine the target project root before scanning:
 - If the current working directory is this `agent-seed` skill, another skill source directory, `$CODEX_HOME`, or a Codex plugin/cache directory, do not scan it as the target project. Ask for the target project path.
 - Keep all repository scans, instruction-file checks, and evidence reads inside the target root unless the user explicitly asks to inspect an external dependency, installed skill, or package source.
 
-Ask early which workflows should become agent-runnable, which parts usually require a familiar human, which skills/scripts/tools agents should use, whether any external plugins should be recommended, whether any bundled packages or platform skills should be created or installed, which agent platforms matter, whether to generate a reusable project skill now or only propose its shape, and which `knowledge_asset_write_mode` to use when `.agents/agent-seed.json` is absent.
+Ask early which workflows should become agent-runnable, which parts usually require a familiar human, which skills/scripts/tools agents should use, whether any external plugins should be recommended, whether any bundled packages or platform skills should be created or installed, which agent platforms matter, whether to generate a reusable project skill now or only propose its shape, and which `knowledge_asset_write_mode` to use when shared `.agents/agent-seed.json` is absent.
 
 ### 1. Inspect Existing Agent Instructions
 
 Check whether instruction files already exist:
 
 ```bash
-rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.cac/*' -g '.opencode/*' -g 'opencode.json' -g '.opencode.yaml' -g '.agents/agent-seed.json'
+rg --files <target-project-root> -g 'AGENTS.md' -g 'CLAUDE.md' -g 'GEMINI.md' -g '.cac/*' -g '.opencode/*' -g 'opencode.json' -g '.opencode.yaml' -g '.agents/agent-seed.json' -g '.agents/agent-seed.local.json'
 ```
 
 If any instruction file exists, read it before doing anything else. Ask whether to update it, replace it, or create a draft alongside it. Do not overwrite without confirmation.
@@ -262,7 +303,7 @@ Read existing files from this evidence set when present:
 - Language/package metadata: `package.json`, lockfiles, `pyproject.toml`, `requirements*.txt`, `Pipfile`, `poetry.lock`, `pom.xml`, Gradle files, `go.mod`, `Cargo.toml`.
 - Build and runtime config: `Makefile`, `justfile`, `Taskfile.yml`, `Dockerfile`, `docker-compose*.yml`.
 - CI/CD: `.github/workflows/*`, `.gitlab-ci.yml`, `Jenkinsfile`.
-- Agent/tool config: `.agents/agent-seed.json`, `opencode.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`, `.cac/settings.json`.
+- Agent/tool config: `.agents/agent-seed.json`, `.agents/agent-seed.local.json`, `opencode.json`, `.opencode.yaml`, `.opencode/`, `.claude/settings.json`, `.cac/settings.json`.
 - Automation folders: `scripts/**`, `tools/**`, `bin/**`, `tasks/**`.
 - Project-bundled packages and skills: `bundled-skills.json`, `bundled-skills/**/SKILL.md`, `bundled-skills/**/agents/openai.yaml`, `bundled-packages.json`, `packages/**/SKILL.md`, `packages/**/skills/**/SKILL.md`, `packages/**/.claude/skills/**/SKILL.md`, `packages/**/.cac/skills/**/SKILL.md`, `packages/**/.opencode/skills/**/SKILL.md`, `skills/*/SKILL.md`, `skills/**/agents/openai.yaml`, and directly related `scripts/`, `references/`, or `assets/`.
 - Linter, formatter, type-checker, and test configuration.
@@ -332,7 +373,7 @@ Prioritize executable answers: exact commands, required inputs, expected success
 
 For new onboarding assets, read `references/output-assets.md`.
 
-Always generate or update `AGENTS.md` unless the user explicitly asks for another file only. Generate `agents.d/` by default for distilled knowledge. Generate platform-specific files only for requested or owner-used platforms. Before creating or editing any of these assets, apply the resolved `knowledge_asset_write_mode` from the current request or `.agents/agent-seed.json`.
+Always generate or update `AGENTS.md` unless the user explicitly asks for another file only. Generate `agents.d/` by default for distilled knowledge. Generate platform-specific files only for requested or owner-used platforms. Before creating or editing any of these assets, apply the resolved `knowledge_asset_write_mode` from the current request or shared `.agents/agent-seed.json`.
 
 When the user explicitly requests an Agent Seed comprehensive refresh of existing assets, read `references/update-existing-assets.md`, classify the confirmed knowledge into the right file, and use the smallest coherent edit. Routine task-completion updates belong to the installed `knowledge-updater` skill instead.
 

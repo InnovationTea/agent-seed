@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
+import { promisify } from "node:util";
 
 import {
   assessMinimumAgentSeedVersion,
@@ -13,6 +15,8 @@ import {
   splitLegacyAgentSeedConfig,
   writeLocalAgentSeedState,
 } from "../skill/scripts/agent-seed-config.mjs";
+
+const execFileAsync = promisify(execFile);
 
 test("effective config combines shared policy with local state without local policy override", () => {
   const effective = resolveAgentSeedConfig({
@@ -100,6 +104,7 @@ test("migration keeps a newer existing local value and is idempotent", async () 
       self_update: { last_check: { status: "newer" } },
       install_prompt_history: [{ integration: "opencli", decision: "declined" }],
     })}\n`);
+    await writeFile(path.join(targetDir, ".gitignore"), ".agents/agent-seed.json\n.agents/managed-skills.json\nkeep.txt\n");
 
     const first = await migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" });
     assert.equal(first.status, "migrated");
@@ -108,9 +113,40 @@ test("migration keeps a newer existing local value and is idempotent", async () 
     assert.equal(files.shared.minimum_agent_seed_version, "v0.3.8");
     assert.equal(files.local.self_update.last_check.status, "newer");
     assert.equal(files.local.install_prompt_history.length, 1);
+    const gitignore = await readFile(path.join(targetDir, ".gitignore"), "utf8");
+    assert.match(gitignore, /^\.agents\/agent-seed\.local\.json$/m);
+    assert.doesNotMatch(gitignore, /^\.agents\/agent-seed\.json$/m);
+    assert.doesNotMatch(gitignore, /^\.agents\/managed-skills\.json$/m);
+    assert.match(gitignore, /^keep\.txt$/m);
 
     const second = await migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" });
     assert.equal(second.status, "current");
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("migration adds parent negations for broad Agent config ignores", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-broad-ignore-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(path.join(agentsDir, "agent-seed.json"), `${JSON.stringify({ knowledge_asset_write_mode: "full-access" })}\n`);
+    await writeFile(path.join(targetDir, ".gitignore"), ".agents/\nother.txt\n");
+    await execFileAsync("git", ["init", "--quiet"], { cwd: targetDir });
+    await migrateAgentSeedConfig({ targetDir, installedVersion: "v0.3.8" });
+
+    const gitignore = await readFile(path.join(targetDir, ".gitignore"), "utf8");
+    assert.match(gitignore, /^!\.agents\/$/m);
+    assert.match(gitignore, /^\.agents\/agent-seed\.local\.json$/m);
+    assert.match(gitignore, /^!\.agents\/agent-seed\.json$/m);
+    assert.match(gitignore, /^!\.agents\/managed-skills\.json$/m);
+    assert.match(gitignore, /^other\.txt$/m);
+
+    await assert.rejects(
+      execFileAsync("git", ["check-ignore", "--no-index", ".agents/agent-seed.json"], { cwd: targetDir }),
+      { code: 1 },
+    );
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }

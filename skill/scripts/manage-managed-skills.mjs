@@ -45,7 +45,6 @@ export async function writeManagedState(targetDir, state) {
   const sharedState = {
     schema_version: 2,
     managed_skills: normalizedState.managed_skills,
-    external_integrations: [],
   };
   await mkdir(path.dirname(statePath), { recursive: true });
   try {
@@ -55,6 +54,41 @@ export async function writeManagedState(targetDir, state) {
     await rm(tempPath, { force: true });
   }
   return { ...normalizedState, external_integrations: [] };
+}
+
+export async function migrateManagedState(targetDir) {
+  const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
+  let raw;
+  try {
+    raw = JSON.parse(await readFile(statePath, "utf8"));
+  } catch (error) {
+    if (error.code === "ENOENT") return { status: "current" };
+    throw error;
+  }
+  const state = normalizeState(raw, statePath);
+  if (state.declined_install_offers.length === 0 && state.external_integrations.length === 0) {
+    return { status: "current" };
+  }
+  const files = await readAgentSeedFiles(targetDir);
+  const currentLocal = files.local.managed_skills || {};
+  await writeLocalAgentSeedState({
+    targetDir,
+    patch: {
+      managed_skills: {
+        ...currentLocal,
+        declined_install_offers: deduplicate([
+          ...(Array.isArray(currentLocal.declined_install_offers) ? currentLocal.declined_install_offers : []),
+          ...state.declined_install_offers,
+        ]),
+        external_integrations: deduplicate([
+          ...(Array.isArray(currentLocal.external_integrations) ? currentLocal.external_integrations : []),
+          ...state.external_integrations,
+        ]),
+      },
+    },
+  });
+  await writeManagedState(targetDir, state);
+  return { status: "migrated" };
 }
 
 async function writeLocalManagedState(targetDir, patch) {
