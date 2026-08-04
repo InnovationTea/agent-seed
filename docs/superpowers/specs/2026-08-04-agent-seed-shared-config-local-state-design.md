@@ -104,6 +104,7 @@ Local fields are:
 - `self_update.proxy`
 - `self_update.last_check`
 - `install_prompt_history`
+- `managed_skills.external_integrations` machine-local actual observations
 - unclassified legacy fields preserved during migration
 
 ## Effective Configuration
@@ -155,17 +156,31 @@ baseline or a newer release with owner approval. If the installed result is
 newer than the baseline, it follows the higher-version flow and offers a
 separate baseline refresh.
 
+An available release below the shared minimum may be reported but must not be
+applied. Missing or invalid installed/baseline evidence is `unknown`, never
+`current`.
+
 ## Managed Skills Relationship
 
 `.agents/managed-skills.json` is committed and describes the team's desired
-managed project skills and packages, including their expected versions and
-target platforms. Agent Seed verifies actual installation using target paths
-and configured verification commands.
+managed project skills, packages, and selected external integrations, including
+their expected versions and target platforms. Managed target directories use
+`.agent-seed-managed.json` as installed-version evidence. External integration
+availability and actual versions remain in `.agents/agent-seed.local.json`.
+An installed Agent Seed that cannot supply a shared entry or desired version
+reports `baseline-unavailable`. Apply operations never install below either the
+shared desired version or a verified newer target marker. Installing or
+recording a higher version advances the shared desired value, which the owner
+reviews and commits; lower observed versions never reduce it.
+`baseline-unavailable` takes precedence over `missing` when the installed Agent
+Seed cannot supply the shared version at all. Unknown managed-state fields and
+future schemas are rejected without rewriting the shared file.
 
 The files do not overlap:
 
 - `agent-seed.json` controls the Agent Seed runtime baseline and team policy.
-- `managed-skills.json` controls managed child skill/package desired versions.
+- `managed-skills.json` controls managed child skill/package and external
+  integration desired versions.
 - `agent-seed.local.json` records machine state and operator history.
 
 `install_prompt_history` is local audit evidence only. It must not override or
@@ -232,8 +247,9 @@ glob remains ignored. The required postcondition is:
 - `.agents/managed-skills.json` is not ignored.
 - `.agents/agent-seed.local.json` is ignored.
 
-The migrator preserves unrelated `.gitignore` content and does not stage or
-commit files.
+These rules apply to the target project passed to installed Agent Seed, not to
+the Agent Seed source repository's own `.gitignore`. The migrator preserves
+unrelated target-project content and does not stage or commit files.
 
 ## Failure Handling And Safety
 
@@ -285,8 +301,10 @@ commit files.
 - Installation-root recording updates only local state.
 - Activation honors shared `self_update.check_on_start`.
 - Knowledge workflows honor shared `knowledge_asset_write_mode`.
-- Managed-skill inspection continues to use shared desired versions and local
-  filesystem verification.
+- Managed-skill inspection continues to use shared desired versions and target
+  filesystem version metadata.
+- External integration inspection compares shared desired entries with local
+  actual observations and never treats a missing observation as installed.
 
 ## Documentation Changes
 

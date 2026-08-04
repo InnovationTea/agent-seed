@@ -47,7 +47,15 @@ the local managed check. If the owner explicitly asks to skip the self-update
 check for the current conversation, pass `--skip-self-update`; do not persist
 that one-conversation choice.
 
-Keep `current` and `declined-current-version` silent. Report one concise combined notice for `update-available`, `install-available`, `missing`, `legacy-unmanaged`, `unknown`, and returned errors. Do not offer entries for another platform.
+Keep `current` and `declined-current-version` silent. Report one concise combined notice for `version-incompatible`, `baseline-refresh-available`, `update-available`, `install-available`, `missing`, `unverified`, `baseline-unavailable`, `legacy-unmanaged`, `unknown`, and returned errors. Do not offer entries for another platform.
+
+Use `version-incompatible` only for the installed Agent Seed being below
+`.agents/agent-seed.json.minimum_agent_seed_version`. Use
+`baseline-unavailable` for a managed skill/package whose shared desired entry or
+version cannot be supplied by the installed Agent Seed manifests; do not rename
+that managed state to `version-incompatible`, even if its target is also
+missing. Report missing or invalid Agent Seed version/baseline evidence as
+`unknown`, not `current`.
 
 The self-update portion reuses Agent Seed's existing 24-hour cache. It may perform the existing authorized GitHub release check when the cache is expired, but this skill performs no other network access.
 
@@ -63,6 +71,9 @@ node <agent-seed-root>/scripts/update-agent-seed.mjs --apply --target <agent-see
 
 If the replacement completes synchronously, run the preflight again against the newly installed manifests. If it returns `queued`, do not inspect staged content; use the new manifests in the next conversation after the deferred replacement completes.
 
+The updater must reject an apply candidate below the shared minimum even when
+that candidate is newer than the installed version.
+
 After approval to install or update one managed entry, run:
 
 ```bash
@@ -77,7 +88,7 @@ node <agent-seed-root>/scripts/manage-managed-skills.mjs decline <project-root> 
 
 An exact-version decline suppresses the same offer in later conversations. A higher manifest version makes it actionable again. Deferring, ignoring, or postponing an offer is not a decline and must not write state.
 
-Managed updates retain the manager's existing whole-directory replacement, verification, backup, and rollback behavior. External integrations remain owned by their platform-native updater.
+Managed updates retain the manager's existing whole-directory replacement, verification, backup, and rollback behavior. They refuse versions below the shared baseline or verified installed marker. A successful higher-version install advances shared `.agents/managed-skills.json`; report that repository change for owner review and commit. External integrations use the same no-downgrade shared baseline but remain owned by their platform-native updater.
 
 ## Finish
 

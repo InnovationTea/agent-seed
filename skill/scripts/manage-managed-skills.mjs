@@ -8,6 +8,13 @@ import { installGitCodeTracker } from "./install-git-code-tracker.mjs";
 
 const STATE_DIRECTORY = ".agents";
 const STATE_FILE = "managed-skills.json";
+const MANAGED_METADATA_FILE = ".agent-seed-managed.json";
+const MIGRATABLE_STATE_KEYS = new Set([
+  "schema_version",
+  "managed_skills",
+  "external_integrations",
+  "declined_install_offers",
+]);
 const EMPTY_STATE = Object.freeze({
   schema_version: 2,
   managed_skills: [],
@@ -19,7 +26,9 @@ export async function readManagedState(targetDir) {
   const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
   let shared;
   try {
-    shared = normalizeState(JSON.parse(await readFile(statePath, "utf8")), statePath);
+    const raw = JSON.parse(await readFile(statePath, "utf8"));
+    assertSupportedManagedState(raw, statePath);
+    shared = normalizeState(raw, statePath);
   } catch (error) {
     if (error.code === "ENOENT") shared = structuredClone(EMPTY_STATE);
     else throw error;
@@ -31,10 +40,9 @@ export async function readManagedState(targetDir) {
       ...shared.declined_install_offers,
       ...(Array.isArray(local.declined_install_offers) ? local.declined_install_offers : []),
     ]),
-    external_integrations: deduplicate([
-      ...shared.external_integrations,
-      ...(Array.isArray(local.external_integrations) ? local.external_integrations : []),
-    ]),
+    installed_external_integrations: Array.isArray(local.external_integrations)
+      ? local.external_integrations
+      : [],
   };
 }
 
@@ -45,6 +53,7 @@ export async function writeManagedState(targetDir, state) {
   const sharedState = {
     schema_version: 2,
     managed_skills: normalizedState.managed_skills,
+    external_integrations: normalizedState.external_integrations,
   };
   await mkdir(path.dirname(statePath), { recursive: true });
   try {
@@ -53,7 +62,7 @@ export async function writeManagedState(targetDir, state) {
   } finally {
     await rm(tempPath, { force: true });
   }
-  return { ...normalizedState, external_integrations: [] };
+  return sharedState;
 }
 
 export async function migrateManagedState(targetDir) {
@@ -65,8 +74,10 @@ export async function migrateManagedState(targetDir) {
     if (error.code === "ENOENT") return { status: "current" };
     throw error;
   }
+  assertSupportedManagedState(raw, statePath);
   const state = normalizeState(raw, statePath);
-  if (state.declined_install_offers.length === 0 && state.external_integrations.length === 0) {
+  const isLegacyState = raw.schema_version === 1 || Object.hasOwn(raw, "declined_install_offers");
+  if (!isLegacyState) {
     return { status: "current" };
   }
   const files = await readAgentSeedFiles(targetDir);
@@ -95,7 +106,7 @@ async function writeLocalManagedState(targetDir, patch) {
   const state = await readManagedState(targetDir);
   const local = {
     declined_install_offers: state.declined_install_offers,
-    external_integrations: state.external_integrations,
+    external_integrations: state.installed_external_integrations,
     ...patch,
   };
   return writeLocalAgentSeedState({
@@ -122,7 +133,10 @@ export async function inspectManagedUpdates({ skillRoot, targetDir, platform }) 
 
   for (const entry of entries) {
     const record = state.managed_skills.find((candidate) => candidate.name === entry.name && candidate.platform === platform);
-    const targetExists = await pathExists(resolveInside(resolvedTargetDir, entry.target_path, `${entry.name} target path`));
+    const targetPath = resolveInside(resolvedTargetDir, entry.target_path, `${entry.name} target path`);
+    const targetExists = await pathExists(targetPath);
+    const installed = targetExists ? await readManagedMetadata(targetPath) : null;
+    const installedMatches = isMatchingManagedMetadata(installed, entry, platform);
     const decline = state.declined_install_offers.find((candidate) =>
       candidate.name === entry.name
       && candidate.kind === entry.kind
@@ -131,10 +145,19 @@ export async function inspectManagedUpdates({ skillRoot, targetDir, platform }) 
     );
     if (!record && !targetExists && !entry.offer_by_default) continue;
 
+    const manifestBelowBaseline = record && compareVersions(record.version, entry.version) > 0;
     const status = record
-      ? targetExists
-        ? compareVersions(record.version, entry.version) < 0 ? "update-available" : "current"
-        : "missing"
+      ? manifestBelowBaseline
+        && (!installedMatches || compareVersions(installed.version, record.version) < 0)
+          ? "baseline-unavailable"
+          : !targetExists
+            ? "missing"
+            : !installedMatches
+              ? "unverified"
+              : compareVersions(installed.version, entry.version) < 0
+                || compareVersions(installed.version, record.version) < 0
+                ? "update-available"
+                : "current"
       : targetExists
         ? "legacy-unmanaged"
         : decline
@@ -145,15 +168,48 @@ export async function inspectManagedUpdates({ skillRoot, targetDir, platform }) 
       kind: entry.kind,
       platform,
       target_path: entry.target_path,
-      installed_version: record?.version ?? null,
+      installed_version: installed?.version ?? null,
       available_version: entry.version,
       state: status,
+      ...(status === "baseline-unavailable" ? { required_version: record.version } : {}),
     });
   }
 
-  const external = state.external_integrations
-    .filter((entry) => entry.platform === platform)
-    .map((entry) => ({ ...entry, state: entry.version === "unknown" ? "version-unknown" : "available" }));
+  for (const record of state.managed_skills.filter((candidate) =>
+    candidate.platform === platform
+    && !entries.some((entry) => entry.name === candidate.name)
+  )) {
+    const targetPath = resolveInside(resolvedTargetDir, record.target_path, `${record.name} target path`);
+    const targetExists = await pathExists(targetPath);
+    const installed = targetExists ? await readManagedMetadata(targetPath) : null;
+    const installedSatisfiesBaseline = isMatchingManagedMetadata(installed, record, platform)
+      && compareVersions(installed.version, record.version) >= 0;
+    managed.push({
+      name: record.name,
+      kind: record.kind,
+      platform,
+      target_path: record.target_path,
+      installed_version: installed?.version ?? null,
+      available_version: null,
+      required_version: record.version,
+      state: installedSatisfiesBaseline ? "current" : "baseline-unavailable",
+    });
+  }
+
+  const desiredExternal = state.external_integrations.filter((entry) => entry.platform === platform);
+  const actualExternal = state.installed_external_integrations.filter((entry) => entry.platform === platform);
+  const external = desiredExternal.map((entry) => {
+    const actual = actualExternal.find((candidate) => candidate.name === entry.name);
+    return {
+      ...entry,
+      state: getExternalIntegrationState(entry, actual),
+    };
+  });
+  for (const actual of actualExternal) {
+    if (!desiredExternal.some((entry) => entry.name === actual.name)) {
+      external.push({ ...actual, state: "legacy-unmanaged" });
+    }
+  }
 
   return { managed, external };
 }
@@ -168,6 +224,7 @@ export async function applyManagedUpdate({ skillRoot, targetDir, name, platform,
   if (!entry) {
     throw new Error(`Unknown managed entry for ${platform}: ${name}`);
   }
+  await assertNoManagedDowngrade({ entry, targetDir: resolvedTargetDir, platform });
   if (entry.kind === "package") {
     return applyPackageUpdate({ entry, targetDir: resolvedTargetDir, platform, installPackage });
   }
@@ -191,6 +248,12 @@ export async function applyManagedUpdate({ skillRoot, targetDir, name, platform,
     }
     await cp(stagedSkill, targetPath, { recursive: true });
     await access(path.join(targetPath, "SKILL.md"));
+    await writeManagedMetadata(targetPath, {
+      name: entry.name,
+      kind: entry.kind,
+      version: entry.version,
+      platform,
+    });
     await recordManagedInstall(resolvedTargetDir, {
       name: entry.name,
       kind: entry.kind,
@@ -219,7 +282,14 @@ async function applyPackageUpdate({ entry, targetDir, platform, installPackage }
 
   try {
     await installer({ targetDir, platform });
-    await access(path.join(resolveInside(targetDir, entry.target_path, `${entry.name} target path`), "SKILL.md"));
+    const installedTarget = resolveInside(targetDir, entry.target_path, `${entry.name} target path`);
+    await access(path.join(installedTarget, "SKILL.md"));
+    await writeManagedMetadata(installedTarget, {
+      name: entry.name,
+      kind: entry.kind,
+      version: entry.version,
+      platform,
+    });
     await recordManagedInstall(targetDir, {
       name: entry.name,
       kind: entry.kind,
@@ -253,7 +323,11 @@ export async function recordExternalIntegration({ targetDir, name, platform, own
   const state = await readManagedState(targetDir);
   const record = { name, platform, ownership, version };
   const retained = state.external_integrations.filter((entry) => entry.name !== name || entry.platform !== platform);
-  await writeLocalManagedState(targetDir, { external_integrations: [...retained, record] });
+  const existing = state.external_integrations.find((entry) => entry.name === name && entry.platform === platform);
+  const desired = [...retained, preferHigherVersionRecord(existing, record)];
+  await writeManagedState(targetDir, { ...state, external_integrations: desired });
+  const retainedActual = state.installed_external_integrations.filter((entry) => entry.name !== name || entry.platform !== platform);
+  await writeLocalManagedState(targetDir, { external_integrations: [...retainedActual, record] });
   return readManagedState(targetDir);
 }
 
@@ -373,17 +447,41 @@ function normalizeRelativePath(value) {
 async function recordManagedInstall(targetDir, record) {
   const state = await readManagedState(targetDir);
   const retained = state.managed_skills.filter((entry) => entry.name !== record.name || entry.platform !== record.platform);
+  const existing = state.managed_skills.find((entry) => entry.name === record.name && entry.platform === record.platform);
+  const desiredRecord = preferHigherVersionRecord(existing, record);
   const retainedDeclines = state.declined_install_offers.filter((entry) =>
     entry.name !== record.name || entry.kind !== record.kind || entry.platform !== record.platform
   );
   const result = await writeManagedState(targetDir, {
     ...state,
-    managed_skills: [...retained, record],
+    managed_skills: [...retained, desiredRecord],
   });
   await writeLocalManagedState(targetDir, {
     declined_install_offers: retainedDeclines,
   });
   return result;
+}
+
+async function assertNoManagedDowngrade({ entry, targetDir, platform }) {
+  const state = await readManagedState(targetDir);
+  const desired = state.managed_skills.find((candidate) => candidate.name === entry.name && candidate.platform === platform);
+  if (desired && compareVersions(desired.version, entry.version) > 0) {
+    throw new Error(`Refusing to downgrade ${entry.name} to ${entry.version}; shared baseline is ${desired.version}.`);
+  }
+
+  const targetPath = resolveInside(targetDir, entry.target_path, `${entry.name} target path`);
+  const installed = (await pathExists(targetPath)) ? await readManagedMetadata(targetPath) : null;
+  if (isMatchingManagedMetadata(installed, entry, platform) && compareVersions(installed.version, entry.version) > 0) {
+    throw new Error(`Refusing to downgrade ${entry.name} to ${entry.version}; installed version is ${installed.version}.`);
+  }
+}
+
+function preferHigherVersionRecord(existing, candidate) {
+  if (!existing) return candidate;
+  if (isComparableVersion(existing.version) && !isComparableVersion(candidate.version)) return existing;
+  if (!isComparableVersion(existing.version) && isComparableVersion(candidate.version)) return candidate;
+  if (!isComparableVersion(existing.version) && !isComparableVersion(candidate.version)) return candidate;
+  return compareVersions(existing.version, candidate.version) > 0 ? existing : candidate;
 }
 
 function normalizeState(state, statePath) {
@@ -402,6 +500,16 @@ function normalizeState(state, statePath) {
   };
 }
 
+function assertSupportedManagedState(state, statePath) {
+  if (Number.isInteger(state?.schema_version) && state.schema_version > 2) {
+    throw new Error(`Unsupported future managed skill schema: ${state.schema_version}`);
+  }
+  if (!state || Array.isArray(state) || typeof state !== "object") return;
+  for (const key of Object.keys(state)) {
+    if (!MIGRATABLE_STATE_KEYS.has(key)) throw new Error(`Unsupported managed skill state field: ${key} (${statePath})`);
+  }
+}
+
 function parseVersion(value) {
   if (typeof value !== "string" || !/^v?\d+(?:\.\d+)*$/.test(value)) throw new Error(`Invalid managed version: ${value}`);
   return value.replace(/^v/, "").split(".").map(Number);
@@ -409,6 +517,39 @@ function parseVersion(value) {
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, "utf8"));
+}
+
+async function readManagedMetadata(targetPath) {
+  try {
+    const metadata = JSON.parse(await readFile(path.join(targetPath, MANAGED_METADATA_FILE), "utf8"));
+    return metadata && typeof metadata === "object" && !Array.isArray(metadata) ? metadata : null;
+  } catch (error) {
+    if (error.code === "ENOENT" || error instanceof SyntaxError) return null;
+    throw error;
+  }
+}
+
+async function writeManagedMetadata(targetPath, metadata) {
+  await writeFile(path.join(targetPath, MANAGED_METADATA_FILE), `${JSON.stringify(metadata, null, 2)}\n`, "utf8");
+}
+
+function isMatchingManagedMetadata(metadata, entry, platform) {
+  return metadata
+    && metadata.name === entry.name
+    && metadata.kind === entry.kind
+    && metadata.platform === platform
+    && typeof metadata.version === "string"
+    && /^v?\d+(?:\.\d+)*$/.test(metadata.version);
+}
+
+function getExternalIntegrationState(desired, actual) {
+  if (!actual) return "missing";
+  if (!isComparableVersion(desired.version) || !isComparableVersion(actual.version)) return "version-unknown";
+  return compareVersions(actual.version, desired.version) < 0 ? "update-available" : "available";
+}
+
+function isComparableVersion(value) {
+  return typeof value === "string" && /^v?\d+(?:\.\d+)*$/.test(value);
 }
 
 async function pathExists(filePath) {

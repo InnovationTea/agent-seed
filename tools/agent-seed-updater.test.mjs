@@ -44,6 +44,54 @@ test("preflight continues managed inspection when self-update check fails", asyn
   assert.deepEqual(result.errors, [{ source: "agent-seed", message: "network unavailable" }]);
 });
 
+test("preflight reports an incompatible Agent Seed baseline even without a remote update", async () => {
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    runSelfUpdate: async () => ({
+      hasUpdate: false,
+      currentVersion: "v0.3.7",
+      latestVersion: "v0.3.7",
+      baseline: {
+        state: "version-incompatible",
+        installed_version: "v0.3.7",
+        minimum_version: "v0.3.8",
+      },
+    }),
+    inspectManaged: async () => ({ managed: [], external: [] }),
+  });
+
+  assert.deepEqual(result.agent_seed, {
+    state: "version-incompatible",
+    current_version: "v0.3.7",
+    available_version: "v0.3.7",
+    minimum_version: "v0.3.8",
+    cached: false,
+  });
+});
+
+test("preflight reports unknown when Agent Seed version or baseline evidence is unconfigured", async () => {
+  const result = await runAgentSeedPreflight({
+    skillRoot: "C:/agent-seed",
+    targetDir: "C:/project",
+    platform: "codex",
+    runSelfUpdate: async () => ({
+      hasUpdate: false,
+      currentVersion: "invalid",
+      latestVersion: "invalid",
+      baseline: {
+        state: "unconfigured",
+        installed_version: null,
+        minimum_version: null,
+      },
+    }),
+    inspectManaged: async () => ({ managed: [], external: [] }),
+  });
+
+  assert.equal(result.agent_seed.state, "unknown");
+});
+
 test("preflight honors the persistent self-update opt-out and still inspects managed skills", async () => {
   const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-preflight-disabled-"));
   let selfUpdateCalled = false;

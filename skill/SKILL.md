@@ -138,9 +138,21 @@ without blocking the requested task. Codex and OpenCode read the rule directly.
 For Claude Code and codeagent-cli, ensure the root `CLAUDE.md` imports
 `@AGENTS.md`.
 
-The manager uses schema version 2 in shared `.agents/managed-skills.json`. It reports
-`install-available` for new applicable default offers and retains
-`declined-current-version` only as a quiet diagnostic. Record a decline only
+The manager uses schema version 2 in shared `.agents/managed-skills.json` for
+desired managed skills, packages, and selected external integrations. Managed
+target directories use `.agent-seed-managed.json` as installed-version
+evidence; a directory without valid metadata is `unverified`, and a desired
+version or entry unavailable from the installed Agent Seed is
+`baseline-unavailable`, including when its target is also missing. Never apply
+a managed version below the shared desired version or a verified newer
+installed marker. After an approved higher version is installed, preserve the
+higher value in `managed-skills.json` and tell the owner to review and commit
+that shared baseline change. Reject unsupported managed state fields and future
+schemas without rewriting the shared file.
+External integration availability and actual versions stay in local
+`.agents/agent-seed.local.json`. The manager reports `install-available` for
+new applicable default offers and retains `declined-current-version` only as a
+quiet diagnostic. Record a decline only
 after the owner explicitly rejects that exact manifest version. The same
 version stays suppressed; a higher manifest version is offered again. Run
 managed `apply` or `decline` commands only after the corresponding explicit
@@ -157,11 +169,12 @@ manager preflight and preserve unrelated project instructions. Do not use this
 migration to scan the repository, interview the owner, or repeat knowledge
 distillation.
 
-Use shared `.agents/managed-skills.json` only for Agent Seed-managed bundled skills
-and packages. For `external-packages.json` integrations, record availability
-and ownership when useful, but use the platform-native update action after
-separate owner approval. Never copy, delete, or replace an external plugin
-directory.
+Use shared `.agents/managed-skills.json` for Agent Seed-managed bundled skills,
+packages, and team-selected `external-packages.json` integrations. Keep actual
+external availability and installed versions local, and use the platform-native
+update action only after separate owner approval. Preserve the higher shared or
+observed external version; never lower the team baseline. Never copy, delete,
+or replace an external plugin directory.
 
 ## Incremental Knowledge Updater
 

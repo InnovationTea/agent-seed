@@ -11,6 +11,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
   assessMinimumAgentSeedVersion,
+  ensureAgentSeedGitignore,
   migrateAgentSeedConfig,
   readAgentSeedFiles,
   refreshAgentSeedBaseline,
@@ -175,6 +176,7 @@ async function main(argv = process.argv.slice(2)) {
       installedVersion: versionMetadata.version,
     });
     await migrateManagedState(projectRootForConfig(configPath));
+    await ensureAgentSeedGitignore(projectRootForConfig(configPath));
   }
   if (isPackagedInstallation) {
     await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
@@ -251,6 +253,7 @@ async function main(argv = process.argv.slice(2)) {
   if (!options.apply || !updatePlan.hasUpdate) {
     return;
   }
+  assertAgentSeedUpdateMeetsBaseline({ candidateVersion: updatePlan.latestVersion, baseline });
 
   const result = await applyUpdate({
     targetDir,
@@ -667,6 +670,13 @@ function mergeStatePatch(config, patch) {
       ...(patch.self_update || {}),
     },
   };
+}
+
+export function assertAgentSeedUpdateMeetsBaseline({ candidateVersion, baseline }) {
+  const minimumVersion = baseline?.minimum_version;
+  if (minimumVersion && compareVersions(candidateVersion, minimumVersion) < 0) {
+    throw new Error(`Agent Seed release ${candidateVersion} does not satisfy shared minimum ${minimumVersion}.`);
+  }
 }
 
 function isStandardAgentSeedConfigPath(configPath) {

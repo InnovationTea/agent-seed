@@ -63,6 +63,30 @@ test("agent-seed updater compares release versions and extracts the agent-seed a
   assert.equal(update.releaseUrl, latestRelease.html_url);
 });
 
+test("Agent Seed apply rejects a release below the shared minimum", async () => {
+  const updater = await importUpdater("candidate-below-baseline");
+
+  assert.throws(
+    () => updater.assertAgentSeedUpdateMeetsBaseline({
+      candidateVersion: "v1.5.0",
+      baseline: {
+        state: "version-incompatible",
+        installed_version: "v1.0.0",
+        minimum_version: "v2.0.0",
+      },
+    }),
+    /v1\.5\.0.*shared minimum v2\.0\.0/i,
+  );
+  assert.doesNotThrow(() => updater.assertAgentSeedUpdateMeetsBaseline({
+    candidateVersion: "v2.1.0",
+    baseline: {
+      state: "version-incompatible",
+      installed_version: "v1.0.0",
+      minimum_version: "v2.0.0",
+    },
+  }));
+});
+
 test("agent-seed updater skips a recent successful update check", async () => {
   const updater = await importUpdater("check-interval");
   const now = new Date("2026-07-27T12:00:00.000Z");
@@ -242,6 +266,44 @@ test("Agent Seed CLI refreshes a higher shared baseline only with approval", asy
     const shared = JSON.parse(await readFile(configPath, "utf8"));
     assert.equal(shared.minimum_agent_seed_version, "v1.2.4");
     assert.equal(shared.knowledge_asset_write_mode, "full-access");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("Agent Seed CLI repairs target Git ignore rules without legacy config migration", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-ignore-repair-cli-"));
+  const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+  const localPath = path.join(rootDir, ".agents", "agent-seed.local.json");
+  const skillRoot = path.join(rootDir, "installed", "agent-seed");
+  const scriptPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+
+  try {
+    await mkdir(skillRoot, { recursive: true });
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(path.join(skillRoot, "VERSION.json"), `${JSON.stringify({ version: "v1.2.3", repository: "owner/agent-seed" })}\n`);
+    await writeValidAgentSeedLayout(skillRoot);
+    await writeFile(configPath, `${JSON.stringify({
+      schema_version: 2,
+      minimum_agent_seed_version: "v1.2.3",
+      self_update: { check_interval_hours: 24 },
+    })}\n`);
+    await writeFile(localPath, `${JSON.stringify({
+      schema_version: 1,
+      self_update: { last_check: {
+        status: "current",
+        current_version: "v1.2.3",
+        latest_version: "v1.2.3",
+        checked_at: new Date().toISOString(),
+      } },
+    })}\n`);
+    await writeFile(path.join(rootDir, ".gitignore"), ".agents/agent-seed.json\n.agents/managed-skills.json\n");
+
+    await execFileAsync(process.execPath, [scriptPath, "--json", "--target", skillRoot, "--config", configPath], { cwd: rootDir });
+    const gitignore = await readFile(path.join(rootDir, ".gitignore"), "utf8");
+    assert.doesNotMatch(gitignore, /^\.agents\/agent-seed\.json$/m);
+    assert.doesNotMatch(gitignore, /^\.agents\/managed-skills\.json$/m);
+    assert.match(gitignore, /^\.agents\/agent-seed\.local\.json$/m);
   } finally {
     await rm(rootDir, { recursive: true, force: true });
   }
