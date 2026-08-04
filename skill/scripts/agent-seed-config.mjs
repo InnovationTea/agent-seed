@@ -47,6 +47,31 @@ export function resolveAgentSeedConfig({ shared = {}, local = {} } = {}) {
   return effective;
 }
 
+export function assessMinimumAgentSeedVersion({ installedVersion, minimumVersion } = {}) {
+  const installed = normalizeVersion(installedVersion);
+  const minimum = normalizeVersion(minimumVersion);
+  if (!installed || !minimum) return { state: "unconfigured", installed_version: installed || null, minimum_version: minimum || null };
+  const comparison = compareVersions(installed, minimum);
+  if (comparison < 0) return { state: "version-incompatible", installed_version: installed, minimum_version: minimum };
+  if (comparison === 0) return { state: "version-current", installed_version: installed, minimum_version: minimum };
+  return { state: "baseline-refresh-available", installed_version: installed, minimum_version: minimum };
+}
+
+export async function refreshAgentSeedBaseline({ targetDir, installedVersion, approved = false } = {}) {
+  if (approved !== true) throw new Error("Owner approval is required to refresh the Agent Seed baseline.");
+  const files = await readAgentSeedFiles(targetDir);
+  if (files.legacy) throw new Error("Migrate the legacy Agent Seed config before refreshing its baseline.");
+  const installed = normalizeVersion(installedVersion);
+  if (!installed) throw new Error("A valid installed Agent Seed version is required.");
+  const current = normalizeVersion(files.shared.minimum_agent_seed_version);
+  if (current && compareVersions(installed, current) <= 0) {
+    return { status: "unchanged", minimum_agent_seed_version: current };
+  }
+  const next = { ...files.shared, schema_version: 2, minimum_agent_seed_version: installed };
+  await writeSharedAgentSeedConfig({ targetDir, config: next });
+  return { status: "refreshed", minimum_agent_seed_version: installed };
+}
+
 export function splitLegacyAgentSeedConfig(legacy, installedVersion) {
   if (!isPlainObject(legacy)) throw new Error("Invalid legacy Agent Seed config.");
   const baseline = selectInitialBaseline(legacy.minimum_agent_seed_version, installedVersion);

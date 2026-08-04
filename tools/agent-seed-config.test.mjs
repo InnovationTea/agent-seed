@@ -5,8 +5,10 @@ import path from "node:path";
 import test from "node:test";
 
 import {
+  assessMinimumAgentSeedVersion,
   migrateAgentSeedConfig,
   readAgentSeedFiles,
+  refreshAgentSeedBaseline,
   resolveAgentSeedConfig,
   splitLegacyAgentSeedConfig,
   writeLocalAgentSeedState,
@@ -74,6 +76,13 @@ test("legacy split preserves an approved baseline newer than the installed versi
   }, "v0.3.8");
 
   assert.equal(result.shared.minimum_agent_seed_version, "v0.4.0");
+});
+
+test("minimum version assessment distinguishes incompatible, current, and newer installs", () => {
+  assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.7", minimumVersion: "v0.3.8" }).state, "version-incompatible");
+  assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.8", minimumVersion: "v0.3.8" }).state, "version-current");
+  assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.9", minimumVersion: "v0.3.8" }).state, "baseline-refresh-available");
+  assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.8", minimumVersion: "" }).state, "unconfigured");
 });
 
 test("migration keeps a newer existing local value and is idempotent", async () => {
@@ -160,6 +169,36 @@ test("migration requires a valid split-capable installed version before writing"
     );
     assert.equal(await readFile(sharedPath, "utf8"), legacy);
     await assert.rejects(readFile(path.join(agentsDir, "agent-seed.local.json"), "utf8"), { code: "ENOENT" });
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("approved baseline refresh changes only the shared version and never downgrades", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-baseline-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(path.join(agentsDir, "agent-seed.json"), `${JSON.stringify({
+      schema_version: 2,
+      minimum_agent_seed_version: "v0.3.8",
+      knowledge_asset_write_mode: "full-access",
+      self_update: { check_on_start: true },
+    })}\n`);
+
+    await assert.rejects(
+      refreshAgentSeedBaseline({ targetDir, installedVersion: "v0.3.9" }),
+      /Owner approval/,
+    );
+    const refreshed = await refreshAgentSeedBaseline({ targetDir, installedVersion: "v0.3.9", approved: true });
+    assert.deepEqual(refreshed, { status: "refreshed", minimum_agent_seed_version: "v0.3.9" });
+    const shared = JSON.parse(await readFile(path.join(agentsDir, "agent-seed.json"), "utf8"));
+    assert.equal(shared.minimum_agent_seed_version, "v0.3.9");
+    assert.equal(shared.knowledge_asset_write_mode, "full-access");
+    assert.deepEqual(shared.self_update, { check_on_start: true });
+
+    const unchanged = await refreshAgentSeedBaseline({ targetDir, installedVersion: "v0.3.7", approved: true });
+    assert.deepEqual(unchanged, { status: "unchanged", minimum_agent_seed_version: "v0.3.9" });
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }
