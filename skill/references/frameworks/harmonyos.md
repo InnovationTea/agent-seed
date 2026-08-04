@@ -40,7 +40,7 @@ DevEco CLI is a HarmonyOS application development CLI that wraps DevEco Studio t
 npm install -g @deveco/deveco-cli@latest
 ```
 
-Treat install, update, project creation, MCP configuration, skill installation, device/emulator runs, and log tailing as `ask first` actions unless the owner has already approved them for the target project and environment.
+Apply the resolved Agent Seed mode after DevEco CLI applicability is established. In `full-access`, install the applicable CLI and perform manifest-declared agent or MCP initialization without separate approval. In `ask-each-change` and `agent-approve`, require approval for the same install and declared side effects. Tool updates, device or emulator runs, log tailing, project creation, and other standalone environment actions still require owner approval.
 
 Useful commands to capture or ask about:
 
@@ -74,7 +74,7 @@ deveco-mcp-server --stdio --harmonySdkPath <HarmonyOS-SDK-path> --nodePath <node
 
 Common configuration evidence may include `deveco-mcp-server`, `@deveco-codegenie/mcp`, `DEVECO_PATH`, `HARMONY_SDK_HOME`, or `COMMANDLINE_TOOL_DIR`.
 
-Treat install, update, MCP configuration, SDK path discovery, and server startup as `ask first` actions. Prefer DevEco CLI and `devecocli init --mcp` for fresh setup unless the owner confirms an existing DevEco Toolbox workflow must be preserved.
+Apply the resolved mode to an explicitly selected legacy install. In `full-access`, the install itself may run without a separate prompt; in the approval-gated modes, disclose its network and global writes and ask first. Updates, standalone MCP configuration, SDK path discovery outside the target root, and server startup retain their own approval boundaries. Prefer DevEco CLI and `devecocli init --mcp` for fresh setup unless the owner confirms an existing DevEco Toolbox workflow must be preserved.
 
 ## Owner Questions
 
@@ -83,7 +83,7 @@ Ask only questions that repository evidence and project-local framework knowledg
 - Which HarmonyOS/OpenHarmony version, SDK, DevEco Studio version, Node.js version, and device or emulator target are approved?
 - Which files are generated or tool-owned, and which files should agents edit by hand?
 - What commands are the confirmed golden path for install, build, package, run, test, lint, log inspection, and clean?
-- Is DevEco CLI approved for this project, and which `devecocli` commands may agents run autonomously versus `ask first`?
+- Which `devecocli` commands beyond the mode-authorized install and declared initialization may agents run autonomously versus `ask first`?
 - Should agents use `devecocli docs search` / `devecocli docs read` and `devecocli serve mcp` as the preferred HarmonyOS documentation and syntax-check surfaces?
 - Is there existing DevEco Toolbox or `@deveco-codegenie/mcp` configuration that must be preserved instead of migrating to DevEco CLI MCP setup?
 - What output, artifact, device state, log line, or test result proves the workflow is healthy?
@@ -103,6 +103,6 @@ Ask only questions that repository evidence and project-local framework knowledg
 
 - Do not assume a HarmonyOS/ArkTS project uses Nuwa unless repository evidence or the owner confirms Nuwa.
 - Do not write framework-specific commands as facts unless they appear in repository files or the owner confirms them.
-- Do not install, update, initialize MCP, run devices/emulators, tail logs, or create projects without owner approval.
+- Apply the resolved mode to installs and manifest-declared initialization. Do not run updates, devices or emulators, tail logs, create projects, or perform standalone environment changes without owner approval.
 - Do not treat preset generated-file boundaries as confirmed. Ask the owner or cite repo evidence.
 - Do not turn temporary troubleshooting notes, secrets, personal paths, internal account names, or one-off incident chatter into reusable runbook content.

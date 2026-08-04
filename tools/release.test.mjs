@@ -1222,7 +1222,9 @@ test("HarmonyOS framework knowledge includes DevEco CLI tooling guidance", async
   assert.match(harmonyos, /devecocli init --mcp/);
   assert.match(harmonyos, /devecocli serve mcp/);
   assert.match(harmonyos, /devecocli skills list/);
-  assert.match(harmonyos, /ask first/i);
+  assert.match(harmonyos, /full-access.*install.*without.*approval/is);
+  assert.match(harmonyos, /ask-each-change.*agent-approve.*approval/is);
+  assert.match(harmonyos, /updates.*devices.*emulators.*owner approval/is);
   assert.match(harmonyos, /Preset/);
 });
 
