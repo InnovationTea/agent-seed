@@ -48,8 +48,9 @@ guidance:
 
 | Path | Purpose | Git policy |
 | --- | --- | --- |
-| `.agents/agent-seed.json` | Local write mode, installed Agent Seed root, self-update state, proxy settings, and install-prompt history. | Local; ignore it. |
-| `.agents/managed-skills.json` | Versions, target paths, and version-specific declined offers for Agent Seed-managed bundled skills and packages. | Local; ignore it. |
+| `.agents/agent-seed.json` | Shared Agent Seed minimum version and team policy such as write mode and startup checks. | Shared; commit it. |
+| `.agents/agent-seed.local.json` | Machine-local Agent Seed installation path, proxy, update cache, and personal audit state. | Local; ignore it. |
+| `.agents/managed-skills.json` | Shared desired versions, targets, and platforms for Agent Seed-managed bundled skills and packages. | Shared; commit it. |
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
 | `.agents/ticket-lookup.local.json` | Machine-specific ticket-lookup URL override or local policy. | Local; ignore it. |
 | `.agents/ticket-lookup/sites/` | Shared host-specific ticket navigation, parsing, and API-shape knowledge. | Shared; commit it. Never store ticket content or credentials. |
@@ -63,12 +64,18 @@ only for platforms the owner uses.
 The effective `knowledge_asset_write_mode` is resolved in this order:
 
 ```text
-current user request -> .agents/agent-seed.json -> full-access
+current user request -> shared .agents/agent-seed.json -> full-access
 ```
 
 The supported values are `ask-each-change`, `agent-approve`, and
 `full-access`. Even in `full-access`, installs, hook changes, external network
 actions, secrets, and production operations still require separate approval.
+
+The first split-capable Agent Seed release migrates a legacy unified
+`.agents/agent-seed.json` into shared and local files, preserves unknown legacy
+fields in local state, and repairs the project's Git ignore rules. New Agent
+Seed releases read legacy configuration; old releases are not expected to
+write the new split format safely.
 
 `agent-seed-updater` is an approval-gated bundled direct skill for Codex,
 Claude Code, codeagent-cli, and OpenCode. Agent Seed installs its canonical
@@ -191,24 +198,32 @@ The updater reads `VERSION.json` for the current repository/version, calls the G
 
 On Windows, a running agent host can lock the installed skill directory. In that case an approved `--apply` stages the verified package in the user's local application-data directory, returns a queued result with `windows-directory-locked`, and starts a detached helper. The update completes automatically after the agent host exits and releases the lock. The helper records `updated` only after it verifies the installed `VERSION.json`, then sends a best-effort Windows desktop notification that the update is ready for the next session; terminal `failed` state needs a new `--apply` command.
 
-When `HTTPS_PROXY`, `HTTP_PROXY`, or `ALL_PROXY` is set, the updater applies the proxy itself for the GitHub release check and asset download. If no updater or environment proxy is configured, the updater also checks Git's `http.proxy`/`https.proxy` settings and, on Windows, the current user's explicit system proxy settings, then reuses the discovered proxy for the GitHub release check. If an interactive update check still fails with a proxy-like network error and no proxy is configured, the updater asks for an HTTPS proxy URL, saves it to `.agents/agent-seed.json`, and retries once.
+When `HTTPS_PROXY`, `HTTP_PROXY`, or `ALL_PROXY` is set, the updater applies the proxy itself for the GitHub release check and asset download. If no updater or environment proxy is configured, the updater also checks Git's `http.proxy`/`https.proxy` settings and, on Windows, the current user's explicit system proxy settings, then reuses the discovered proxy for the GitHub release check. If an interactive update check still fails with a proxy-like network error and no proxy is configured, the updater asks for an HTTPS proxy URL, saves it to `.agents/agent-seed.local.json`, and retries once.
 
-Proxy settings can also be persisted in the local `.agents/agent-seed.json` config, which is ignored by Git because it may contain machine-specific proxy or update permission state:
+Proxy settings can also be persisted in `.agents/agent-seed.local.json`, which is ignored by Git because it contains machine-specific proxy or update state:
 
 ```sh
 node scripts/update-agent-seed.mjs --set-https-proxy http://proxy.example:8080
 node scripts/update-agent-seed.mjs --set-no-proxy localhost,127.0.0.1
 ```
 
-During Agent Seed activation, `/agent-seed` reads the installed `VERSION.json`, reads the target project's `.agents/agent-seed.json`, then runs `node scripts/update-agent-seed.mjs --json`. The default 24-hour cache avoids another network request after a successful `current` or `available` result; use `--force-check` for an immediate refresh. `self_update.update_mode` defaults to `notify`, while `manual` only reports state. Applying an update with `--apply` remains a separate approval. If the check cannot run, agents must report the update status as unknown rather than treating the skill as current.
+During Agent Seed activation, `/agent-seed` reads the installed `VERSION.json`, resolves shared `.agents/agent-seed.json` policy with local `.agents/agent-seed.local.json` state, then runs `node scripts/update-agent-seed.mjs --json`. The shared `minimum_agent_seed_version` is a compatibility baseline: lower versions require an approved update, equal versions are current, and newer versions are never downgraded. A newer installed version may propose a baseline refresh, but startup never edits the shared file automatically. The default 24-hour cache avoids another network request after a successful `current` or `available` result; use `--force-check` for an immediate refresh. `self_update.update_mode` defaults to `notify`, while `manual` only reports state. Applying an update with `--apply` remains a separate approval. If the check cannot run, agents must report the update status as unknown rather than treating the skill as current.
+
+After using a newer installed Agent Seed, an owner can explicitly refresh the
+shared baseline and review the resulting Git diff:
+
+```bash
+node scripts/update-agent-seed.mjs --refresh-baseline --approved
+```
 
 ## Managed Skill Updates
 
-When Agent Seed installs a bundled direct skill or package into a project, it
-records the installed version and target path in
-`.agents/managed-skills.json`. Schema version 2 also stores
-`declined_install_offers`. The state file is local operator state and should
-stay ignored by Git. At the start of a new conversation, the installed
+When Agent Seed installs a bundled direct skill or package into a project, the
+team's desired version and target platform live in the committed
+`.agents/managed-skills.json`. Actual target presence is checked on each
+machine. Personal `declined_install_offers` and external integration
+observations live under `.agents/agent-seed.local.json` and are never shared.
+At the start of a new conversation, the installed
 `agent-seed-updater` runs the combined preflight for the project platform:
 
 ```bash

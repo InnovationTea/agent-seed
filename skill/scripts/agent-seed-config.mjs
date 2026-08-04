@@ -115,6 +115,7 @@ export async function migrateAgentSeedConfig({ targetDir, installedVersion } = {
   const local = mergeLocalState(split.local, files.local);
   await writeJsonAtomic(path.join(path.resolve(targetDir), LOCAL_CONFIG_FILE), local);
   await writeJsonAtomic(path.join(path.resolve(targetDir), SHARED_CONFIG_FILE), split.shared);
+  await updateGitignore(path.resolve(targetDir));
   return { status: "migrated", shared: split.shared, local };
 }
 
@@ -222,6 +223,44 @@ async function writeJsonAtomic(filePath, value) {
   try {
     await writeFile(tempPath, `${JSON.stringify(value, null, 2)}\n`, "utf8");
     JSON.parse(await readFile(tempPath, "utf8"));
+    await rename(tempPath, filePath);
+  } finally {
+    await rm(tempPath, { force: true });
+  }
+}
+
+async function updateGitignore(targetDir) {
+  const gitignorePath = path.join(targetDir, ".gitignore");
+  let content;
+  try {
+    content = await readFile(gitignorePath, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
+
+  const lines = content.split(/\r?\n/);
+  const filtered = lines.filter((line) => ![".agents/agent-seed.json", ".agents/managed-skills.json"].includes(line.trim()));
+  const hasBroadAgentsIgnore = filtered.some((line) => [".agents/", ".agents/*.json", ".agents/**"].includes(line.trim()));
+  const required = hasBroadAgentsIgnore ? ["!.agents/"] : [];
+  required.push(".agents/agent-seed.local.json");
+  if (hasBroadAgentsIgnore) {
+    required.push("!.agents/agent-seed.json", "!.agents/managed-skills.json");
+  }
+  for (const line of required) {
+    if (!filtered.some((existing) => existing.trim() === line)) filtered.push(line);
+  }
+  const next = `${filtered.join("\n").replace(/\n+$/, "")}\n`;
+  if (next === content) return false;
+  await writeTextAtomic(gitignorePath, next);
+  return true;
+}
+
+async function writeTextAtomic(filePath, content) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+  try {
+    await writeFile(tempPath, content, "utf8");
     await rename(tempPath, filePath);
   } finally {
     await rm(tempPath, { force: true });

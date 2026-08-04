@@ -207,6 +207,46 @@ test("cached Agent Seed CLI checks record the installed root without a network r
   }
 });
 
+test("Agent Seed CLI refreshes a higher shared baseline only with approval", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-baseline-cli-"));
+  const configPath = path.join(rootDir, ".agents", "agent-seed.json");
+  const skillRoot = path.join(rootDir, "installed", "agent-seed");
+  const scriptPath = path.join(process.cwd(), "skill", "scripts", "update-agent-seed.mjs");
+
+  try {
+    await mkdir(skillRoot, { recursive: true });
+    await mkdir(path.dirname(configPath), { recursive: true });
+    await writeFile(path.join(skillRoot, "VERSION.json"), `${JSON.stringify({ version: "v1.2.4", repository: "owner/agent-seed" })}\n`);
+    await writeValidAgentSeedLayout(skillRoot);
+    await writeFile(configPath, `${JSON.stringify({
+      schema_version: 2,
+      minimum_agent_seed_version: "v1.2.3",
+      knowledge_asset_write_mode: "full-access",
+    })}\n`);
+
+    await assert.rejects(
+      execFileAsync(process.execPath, [scriptPath, "--refresh-baseline", "--target", skillRoot, "--config", configPath]),
+      /Owner approval/,
+    );
+    const { stdout } = await execFileAsync(process.execPath, [
+      scriptPath,
+      "--refresh-baseline",
+      "--approved",
+      "--json",
+      "--target",
+      skillRoot,
+      "--config",
+      configPath,
+    ], { cwd: rootDir });
+    assert.deepEqual(JSON.parse(stdout), { status: "refreshed", minimum_agent_seed_version: "v1.2.4" });
+    const shared = JSON.parse(await readFile(configPath, "utf8"));
+    assert.equal(shared.minimum_agent_seed_version, "v1.2.4");
+    assert.equal(shared.knowledge_asset_write_mode, "full-access");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("invalid Agent Seed targets do not replace the recorded installation root", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-invalid-install-root-"));
   const configPath = path.join(rootDir, ".agents", "agent-seed.json");

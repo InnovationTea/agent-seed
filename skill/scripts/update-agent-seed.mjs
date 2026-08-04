@@ -17,6 +17,7 @@ import {
   resolveAgentSeedConfig,
   writeLocalAgentSeedState,
 } from "./agent-seed-config.mjs";
+import { migrateManagedState } from "./manage-managed-skills.mjs";
 
 export { assessMinimumAgentSeedVersion, refreshAgentSeedBaseline };
 
@@ -155,11 +156,25 @@ async function main(argv = process.argv.slice(2)) {
   const targetDir = path.resolve(options.target || defaultTargetDir);
   const isPackagedInstallation = await validateAgentSeedInstallationRoot(targetDir);
   const versionMetadata = await readVersionMetadata(targetDir);
+  if (options.refreshBaseline) {
+    if (!isStandardAgentSeedConfigPath(configPath)) {
+      throw new Error("--refresh-baseline requires the project .agents/agent-seed.json config path.");
+    }
+    const result = await refreshAgentSeedBaseline({
+      targetDir: projectRootForConfig(configPath),
+      installedVersion: versionMetadata.version,
+      approved: options.approved,
+    });
+    if (options.json) console.log(JSON.stringify(result, null, 2));
+    else console.log(`agent-seed baseline ${result.status}: ${result.minimum_agent_seed_version}`);
+    return;
+  }
   if (isStandardAgentSeedConfigPath(configPath) && versionMetadata.version) {
     await migrateAgentSeedConfig({
       targetDir: projectRootForConfig(configPath),
       installedVersion: versionMetadata.version,
     });
+    await migrateManagedState(projectRootForConfig(configPath));
   }
   if (isPackagedInstallation) {
     await writeAgentSeedInstallationState({ configPath, skillRoot: targetDir });
@@ -547,8 +562,10 @@ function normalizeVersion(version) {
 function parseArgs(argv) {
   const options = {
     apply: false,
+    approved: false,
     forceCheck: false,
     json: false,
+    refreshBaseline: false,
   };
 
   for (let index = 0; index < argv.length; index += 1) {
@@ -556,10 +573,14 @@ function parseArgs(argv) {
 
     if (arg === "--apply") {
       options.apply = true;
+    } else if (arg === "--approved") {
+      options.approved = true;
     } else if (arg === "--force-check") {
       options.forceCheck = true;
     } else if (arg === "--json") {
       options.json = true;
+    } else if (arg === "--refresh-baseline") {
+      options.refreshBaseline = true;
     } else if (arg === "--repository") {
       options.repository = requireValue(argv, (index += 1), arg);
     } else if (arg === "--target") {

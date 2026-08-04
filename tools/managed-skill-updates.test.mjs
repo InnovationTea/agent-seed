@@ -133,6 +133,34 @@ test("read-only inspection normalizes schema v1 without rewriting it", async () 
   }
 });
 
+test("managed state migration moves personal records to Agent Seed local state", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-migration-"));
+  const targetDir = path.join(rootDir, "target");
+  const statePath = path.join(targetDir, ".agents", "managed-skills.json");
+
+  try {
+    await mkdir(path.dirname(statePath), { recursive: true });
+    await writeFile(statePath, `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("gitpush", "v1.1.0")],
+      external_integrations: [{ name: "opencli", platform: "codex", ownership: "local", version: "unknown" }],
+      declined_install_offers: [{ name: "gitpush", kind: "direct-skill", platform: "codex", offered_version: "v1.1.0" }],
+    })}\n`);
+
+    const result = await manager.migrateManagedState(targetDir);
+    assert.deepEqual(result, { status: "migrated" });
+    const shared = JSON.parse(await readFile(statePath, "utf8"));
+    assert.deepEqual(shared.managed_skills, [record("gitpush", "v1.1.0")]);
+    assert.equal(shared.external_integrations, undefined);
+    assert.equal(shared.declined_install_offers, undefined);
+    const local = JSON.parse(await readFile(path.join(targetDir, ".agents", "agent-seed.local.json"), "utf8"));
+    assert.equal(local.managed_skills.declined_install_offers.length, 1);
+    assert.equal(local.managed_skills.external_integrations[0].name, "opencli");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("applyManagedUpdate replaces an approved direct skill and records its version", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-apply-"));
   const skillRoot = path.join(rootDir, "skill-root");

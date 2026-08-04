@@ -78,12 +78,14 @@ Generate or propose a project-specific skill when repeated workflows should trig
 
 ## Knowledge Asset Write Mode
 
-Resolve the write mode before creating or editing `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, generated project skills, or `.agents/agent-seed.json`.
+Resolve the write mode before creating or editing `AGENTS.md`, `agents.d/`, `CLAUDE.md`, `.cac/`, `.opencode/`, generated project skills, or shared `.agents/agent-seed.json`.
 
-Persist local Agent Seed preferences and state, including the target project's write mode, in `.agents/agent-seed.json`:
+Persist shared Agent Seed policy, including the target project's write mode, in `.agents/agent-seed.json`:
 
 ```json
 {
+  "schema_version": 2,
+  "minimum_agent_seed_version": "v0.3.8",
   "knowledge_asset_write_mode": "full-access"
 }
 ```
@@ -94,9 +96,9 @@ Supported values:
 - `agent-approve`: After the owner confirms the onboarding/update scope, create and edit in-scope knowledge assets autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Create, update, and reorganize knowledge assets directly inside the target project, then report the diff and verification. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
-The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the config is missing, default to `full-access`; the owner may select a stricter mode explicitly.
+The current user request wins over the shared project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the shared config is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
-`.agents/agent-seed.json` is local operator state and may contain machine-specific proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.json`. Do not document reusable project knowledge only in this file; put shared instructions in `AGENTS.md` or `agents.d/`.
+`.agents/agent-seed.local.json` is local operator state and may contain machine-specific proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.local.json`; keep `.agents/agent-seed.json` trackable. Do not document reusable project knowledge only in either config file; put shared instructions in `AGENTS.md` or `agents.d/`.
 
 Recommend external platform plugins when a mature cross-project tool should be installed through Codex, Claude Code, OpenCode, or another platform's normal network-backed plugin flow instead of being bundled into the generated project assets.
 

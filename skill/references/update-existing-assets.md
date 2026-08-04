@@ -6,12 +6,14 @@ Trigger phrases include "remember this", "add this to AGENTS.md", "update agents
 
 ## Knowledge Asset Write Mode
 
-Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over the project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `full-access`; the owner may select a stricter mode explicitly.
+Resolve `knowledge_asset_write_mode` before editing existing assets. The current user request wins over shared project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If it is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
-Persist local Agent Seed preferences and state, including the write mode, as:
+Persist shared Agent Seed policy, including the write mode, as:
 
 ```json
 {
+  "schema_version": 2,
+  "minimum_agent_seed_version": "v0.3.8",
   "knowledge_asset_write_mode": "full-access"
 }
 ```
@@ -22,7 +24,7 @@ Supported values:
 - `agent-approve`: After the owner confirms the update scope, make minimal in-scope edits autonomously. Still ask before conflicts, deletes, broad rewrites, install commands, hook changes, external network access, or personal/global directory writes.
 - `full-access`: Make in-scope knowledge asset edits directly and report the diff plus fresh-agent dry-run result. Still ask before secrets, production actions, destructive changes, install commands, hook changes, external network access, or personal/global directory writes.
 
-`.agents/agent-seed.json` is local operator state and may contain proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.json`. Do not store reusable project knowledge only in this file; update `AGENTS.md` or `agents.d/` for shared guidance.
+`.agents/agent-seed.local.json` is local operator state and may contain proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.local.json`; keep `.agents/agent-seed.json` trackable. Do not store reusable project knowledge only in either config file; update `AGENTS.md` or `agents.d/` for shared guidance.
 
 ## Update Flow
 
