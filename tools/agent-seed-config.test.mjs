@@ -108,6 +108,15 @@ test("legacy split preserves knowledge distillation state in shared policy", () 
   });
 });
 
+test("legacy split rejects malformed knowledge distillation timestamps", () => {
+  assert.throws(
+    () => splitLegacyAgentSeedConfig({
+      knowledge_distillation: { status: "complete", completed_at: "not-a-date" },
+    }, "v0.3.8"),
+    /Invalid legacy Agent Seed field: knowledge_distillation/,
+  );
+});
+
 test("minimum version assessment distinguishes incompatible, current, and newer installs", () => {
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.7", minimumVersion: "v0.3.8" }).state, "version-incompatible");
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.8", minimumVersion: "v0.3.8" }).state, "version-current");
@@ -124,6 +133,10 @@ test("knowledge distillation defaults to missing and starts when the marker is a
   );
   assert.deepEqual(
     getKnowledgeDistillationState({ knowledge_distillation: { status: "complete" } }),
+    { status: "missing", reason: "invalid-complete" },
+  );
+  assert.deepEqual(
+    getKnowledgeDistillationState({ knowledge_distillation: { status: "complete", completed_at: "not-a-date" } }),
     { status: "missing", reason: "invalid-complete" },
   );
   assert.equal(
@@ -180,6 +193,13 @@ test("knowledge distillation state persists in shared config without changing po
     assert.equal(files.shared.minimum_agent_seed_version, "v0.3.8");
     assert.equal(files.shared.knowledge_asset_write_mode, "full-access");
     assert.deepEqual(files.shared.knowledge_distillation, complete);
+
+    const failed = await writeKnowledgeDistillationState({
+      targetDir,
+      state: { status: "failed", last_step: "owner interview" },
+    });
+    assert.deepEqual(failed, { status: "failed", last_step: "owner interview" });
+    assert.equal(shouldStartKnowledgeDistillation({ shared: { knowledge_distillation: failed }, hasAgentsFile: true }), true);
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }
@@ -194,6 +214,10 @@ test("knowledge distillation state rejects unsupported statuses and incomplete c
     );
     await assert.rejects(
       writeKnowledgeDistillationState({ targetDir, state: { status: "complete" } }),
+      /completed_at is required/,
+    );
+    await assert.rejects(
+      writeKnowledgeDistillationState({ targetDir, state: { status: "complete", completed_at: "not-a-date" } }),
       /completed_at is required/,
     );
   } finally {
