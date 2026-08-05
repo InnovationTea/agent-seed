@@ -27,6 +27,14 @@ startup rule to `AGENTS.md`:
 > results without blocking the requested task. Do not invoke it again in the
 > same conversation unless an approved synchronous Agent Seed update requires
 > one immediate recheck.
+>
+> After `agent-seed-updater` returns, inspect the shared
+> `knowledge_distillation` state and `AGENTS.md`. If the state is missing,
+> invalid, `in_progress`, or `failed`, or if `AGENTS.md` is absent, invoke
+> Agent Seed onboarding before the first user task so its Activation Preflight
+> installs and verifies the applicable defaults before scanning. A `complete`
+> state with `AGENTS.md` present skips automatic onboarding. An owner request
+> for a full refresh bypasses that marker and invokes Agent Seed again.
 
 Codex and OpenCode read the canonical startup rule from `AGENTS.md`. For Claude
 Code and codeagent-cli (cac), add or preserve a root `CLAUDE.md` import of
@@ -70,7 +78,11 @@ edit as a recoverable partial installation: keep the skill and report the exact
 missing rule or import for repair. Do not generate lifecycle or SessionEnd
 hooks.
 
-Generate `agents.d/` by default for knowledge distillation. Skip it only when the project is small and the owner explicitly wants everything in a concise `AGENTS.md`.
+Generate `agents.d/` by default for knowledge distillation, but do not create an
+empty directory during lightweight initialization. If it is absent, the
+`knowledge-updater` may create one focused file on demand and add its link to
+`AGENTS.md`. Skip it entirely when the project is small and the owner explicitly
+wants everything in a concise `AGENTS.md`.
 
 Generate platform-specific files only for platforms the owner uses or explicitly requests, such as `CLAUDE.md`, `GEMINI.md`, `.cac/`, or `.opencode/`. If platforms are unknown, ask before generating platform-specific files.
 
@@ -99,6 +111,28 @@ Supported values:
 The current user request wins over the shared project config. If the user does not specify a mode, read `.agents/agent-seed.json`. If the shared config is missing, default to `full-access`; the owner may select a stricter mode explicitly.
 
 `.agents/agent-seed.local.json` is local operator state and may contain machine-specific proxy settings or update permission history. When creating it, ensure `.gitignore` contains `.agents/agent-seed.local.json`; keep `.agents/agent-seed.json` trackable. Do not document reusable project knowledge only in either config file; put shared instructions in `AGENTS.md` or `agents.d/`.
+
+## Knowledge Distillation Completion
+
+Record the shared onboarding lifecycle in `.agents/agent-seed.json`:
+
+```json
+{
+  "knowledge_distillation": {
+    "status": "complete",
+    "completed_at": "2026-08-05T10:00:00.000Z",
+    "agent_seed_version": "v0.3.8"
+  }
+}
+```
+
+Missing or invalid state, `in_progress`, and `failed` mean onboarding is not
+complete. `complete` is valid only when `AGENTS.md` exists and the initial or
+explicit full run finished its scan, interview, asset generation, fresh-agent
+dry run, and self-review. A full refresh explicitly requested by the owner
+always bypasses `complete`; preserve existing assets and leave the state
+non-complete if the refresh fails. Routine `knowledge-updater` work must not set
+or clear this state.
 
 Recommend external platform plugins when a mature cross-project tool should be installed through Codex, Claude Code, OpenCode, or another platform's normal network-backed plugin flow instead of being bundled into the generated project assets.
 

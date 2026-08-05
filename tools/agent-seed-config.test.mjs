@@ -9,11 +9,14 @@ import { promisify } from "node:util";
 import {
   assessMinimumAgentSeedVersion,
   ensureAgentSeedGitignore,
+  getKnowledgeDistillationState,
   migrateAgentSeedConfig,
   readAgentSeedFiles,
   refreshAgentSeedBaseline,
   resolveAgentSeedConfig,
+  shouldStartKnowledgeDistillation,
   splitLegacyAgentSeedConfig,
+  writeKnowledgeDistillationState,
   writeLocalAgentSeedState,
 } from "../skill/scripts/agent-seed-config.mjs";
 
@@ -25,6 +28,10 @@ test("effective config combines shared policy with local state without local pol
       schema_version: 2,
       minimum_agent_seed_version: "v0.3.8",
       knowledge_asset_write_mode: "agent-approve",
+      knowledge_distillation: {
+        status: "complete",
+        completed_at: "2026-08-05T10:00:00.000Z",
+      },
       self_update: { check_on_start: true, update_mode: "notify" },
     },
     local: {
@@ -40,6 +47,10 @@ test("effective config combines shared policy with local state without local pol
 
   assert.equal(effective.minimum_agent_seed_version, "v0.3.8");
   assert.equal(effective.knowledge_asset_write_mode, "agent-approve");
+  assert.deepEqual(effective.knowledge_distillation, {
+    status: "complete",
+    completed_at: "2026-08-05T10:00:00.000Z",
+  });
   assert.equal(effective.self_update.check_on_start, true);
   assert.equal(effective.self_update.update_mode, "notify");
   assert.equal(effective.self_update.proxy.https_proxy, "http://proxy.example:8080");
@@ -83,11 +94,111 @@ test("legacy split preserves an approved baseline newer than the installed versi
   assert.equal(result.shared.minimum_agent_seed_version, "v0.4.0");
 });
 
+test("legacy split preserves knowledge distillation state in shared policy", () => {
+  const result = splitLegacyAgentSeedConfig({
+    knowledge_distillation: {
+      status: "complete",
+      completed_at: "2026-08-05T10:00:00.000Z",
+    },
+  }, "v0.3.8");
+
+  assert.deepEqual(result.shared.knowledge_distillation, {
+    status: "complete",
+    completed_at: "2026-08-05T10:00:00.000Z",
+  });
+});
+
 test("minimum version assessment distinguishes incompatible, current, and newer installs", () => {
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.7", minimumVersion: "v0.3.8" }).state, "version-incompatible");
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.8", minimumVersion: "v0.3.8" }).state, "version-current");
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.9", minimumVersion: "v0.3.8" }).state, "baseline-refresh-available");
   assert.equal(assessMinimumAgentSeedVersion({ installedVersion: "v0.3.8", minimumVersion: "" }).state, "unconfigured");
+});
+
+test("knowledge distillation defaults to missing and starts when the marker is absent or invalid", () => {
+  assert.deepEqual(getKnowledgeDistillationState({}), { status: "missing" });
+  assert.equal(shouldStartKnowledgeDistillation({ shared: {}, hasAgentsFile: false }), true);
+  assert.deepEqual(
+    getKnowledgeDistillationState({ knowledge_distillation: { status: "unknown" } }),
+    { status: "missing", reason: "invalid-status" },
+  );
+  assert.deepEqual(
+    getKnowledgeDistillationState({ knowledge_distillation: { status: "complete" } }),
+    { status: "missing", reason: "invalid-complete" },
+  );
+  assert.equal(
+    shouldStartKnowledgeDistillation({
+      shared: { knowledge_distillation: { status: "unknown" } },
+      hasAgentsFile: true,
+    }),
+    true,
+  );
+});
+
+test("completed knowledge distillation skips automatic onboarding only when AGENTS.md exists", () => {
+  const shared = {
+    knowledge_distillation: {
+      status: "complete",
+      completed_at: "2026-08-05T10:00:00.000Z",
+    },
+  };
+
+  assert.deepEqual(getKnowledgeDistillationState(shared), shared.knowledge_distillation);
+  assert.equal(shouldStartKnowledgeDistillation({ shared, hasAgentsFile: true }), false);
+  assert.equal(shouldStartKnowledgeDistillation({ shared, hasAgentsFile: false }), true);
+  assert.equal(shouldStartKnowledgeDistillation({ shared, hasAgentsFile: true, forceFullRefresh: true }), true);
+});
+
+test("knowledge distillation state persists in shared config without changing policy", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-distillation-state-"));
+  try {
+    const agentsDir = path.join(targetDir, ".agents");
+    await mkdir(agentsDir, { recursive: true });
+    await writeFile(path.join(agentsDir, "agent-seed.json"), `${JSON.stringify({
+      schema_version: 2,
+      minimum_agent_seed_version: "v0.3.8",
+      knowledge_asset_write_mode: "full-access",
+    })}\n`);
+
+    const running = await writeKnowledgeDistillationState({
+      targetDir,
+      state: { status: "in_progress", started_at: "2026-08-05T09:00:00.000Z" },
+    });
+    assert.deepEqual(running, { status: "in_progress", started_at: "2026-08-05T09:00:00.000Z" });
+
+    const complete = await writeKnowledgeDistillationState({
+      targetDir,
+      state: {
+        status: "complete",
+        completed_at: "2026-08-05T10:00:00.000Z",
+        agent_seed_version: "v0.3.8",
+      },
+    });
+    assert.equal(complete.status, "complete");
+
+    const files = await readAgentSeedFiles(targetDir);
+    assert.equal(files.shared.minimum_agent_seed_version, "v0.3.8");
+    assert.equal(files.shared.knowledge_asset_write_mode, "full-access");
+    assert.deepEqual(files.shared.knowledge_distillation, complete);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("knowledge distillation state rejects unsupported statuses and incomplete completion metadata", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-distillation-invalid-"));
+  try {
+    await assert.rejects(
+      writeKnowledgeDistillationState({ targetDir, state: { status: "unknown" } }),
+      /Unsupported knowledge distillation status: unknown/,
+    );
+    await assert.rejects(
+      writeKnowledgeDistillationState({ targetDir, state: { status: "complete" } }),
+      /completed_at is required/,
+    );
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
 });
 
 test("migration keeps a newer existing local value and is idempotent", async () => {

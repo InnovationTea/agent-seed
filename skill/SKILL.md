@@ -114,6 +114,40 @@ fields in local state, and repairs the project's Git ignore rules. New Agent
 Seed releases read legacy configuration; old releases are not expected to
 write the new split format safely.
 
+## Knowledge Distillation Lifecycle
+
+Agent Seed uses the shared `knowledge_distillation` object in
+`.agents/agent-seed.json` to distinguish first-run onboarding from routine task
+work:
+
+```json
+{
+  "knowledge_distillation": {
+    "status": "complete",
+    "completed_at": "2026-08-05T10:00:00.000Z",
+    "agent_seed_version": "v0.3.8"
+  }
+}
+```
+
+At the start of a conversation, after the target root is known and before a
+detailed repository scan, inspect this state and `AGENTS.md`. Treat a missing,
+invalid, `in_progress`, or `failed` state as not initialized. A `complete`
+state skips automatic onboarding only when `AGENTS.md` also exists. Do not use
+the presence of `agents.d/` as the completion signal; it may be absent and is
+created on demand by `knowledge-updater` when detailed knowledge needs a file.
+
+When onboarding starts, record `in_progress`. Record `complete` only after the
+scan, owner interviews, asset writes, fresh-agent dry run, and self-review all
+finish successfully. Keep an interrupted or failed run non-complete and retain
+only a concise last step or error for the next activation.
+
+An explicit request for a full refresh, such as
+`重新进行全量知识蒸馏和访谈`, always starts Agent Seed and bypasses the
+`complete` marker. Read `references/update-existing-assets.md`, preserve existing
+assets, and apply the resolved write mode; a failed refresh keeps the state
+non-complete so the next activation can retry it.
+
 ## Agent Seed Updater
 
 Agent Seed's own activation continues to run the cached self-update check in
@@ -374,7 +408,7 @@ Default to knowledge distillation, not a template fill-in.
 Normal scope:
 
 - `AGENTS.md` as the concise portable entry point.
-- `agents.d/` as the default home for split runbooks, maps, recipes, playbooks, risks, and handoff rules.
+- `agents.d/` as the default home for split runbooks, maps, recipes, playbooks, risks, and handoff rules. Do not pre-create it just to mark onboarding complete; create focused files when detailed knowledge requires them.
 - Platform-specific files such as `CLAUDE.md`, `GEMINI.md`, or `.opencode/` only when the owner uses or requests those agents.
 - A project-specific skill recommendation, and the skill itself when repeated workflows should be shared across future agents or checkouts.
 - Recommended external plugins when a mature platform plugin should be installed through the owner's normal network-backed plugin flow instead of vendored into the generated assets.
@@ -430,6 +464,11 @@ Check generated or updated files for:
 - Placeholder text such as `TODO`, `TBD`, or vague filler.
 
 Fix issues before presenting the result.
+
+After this self-review succeeds for an initial onboarding or explicit full
+refresh, write `knowledge_distillation.status: "complete"` and its
+`completed_at` timestamp to the shared Agent Seed config. Do not write
+`complete` for a partial, interrupted, declined, or failed run.
 
 ## Edge Cases
 
