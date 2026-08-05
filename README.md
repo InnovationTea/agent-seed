@@ -48,7 +48,7 @@ guidance:
 
 | Path | Purpose | Git policy |
 | --- | --- | --- |
-| `.agents/agent-seed.json` | Shared Agent Seed minimum version and team policy such as write mode and startup checks. | Shared; commit it. |
+| `.agents/agent-seed.json` | Shared Agent Seed minimum version, team policy, and knowledge-distillation completion state. | Shared; commit it. |
 | `.agents/agent-seed.local.json` | Machine-local Agent Seed installation path, proxy, update cache, and personal audit state. | Local; ignore it. |
 | `.agents/managed-skills.json` | Shared desired versions, targets, and platforms for managed skills, packages, and selected external integrations. | Shared; commit it. |
 | `.agents/ticket-lookup.json` | Shared requirements-management URL and team lookup policy. | Shared; commit it. Never store credentials. |
@@ -107,6 +107,14 @@ repair a missing rule without replacing the skill.
 
 The updater uses only durable facts established in the current conversation
 plus existing `AGENTS.md` and relevant `agents.d/` files. It performs no repository scan, owner interview, transcript read, network action, or child-agent launch. It updates knowledge assets directly with minimal edits and always reports `updated`, `no new reusable knowledge`, `not initialized`, `conflict`, or `update failed`.
+
+Agent Seed records initial knowledge-distillation state in the shared
+`.agents/agent-seed.json` `knowledge_distillation` object. A missing, invalid,
+`in_progress`, or `failed` state triggers first-run onboarding when the project
+conversation starts; `complete` skips it only when `AGENTS.md` exists. The
+absence of `agents.d/` is valid because the knowledge updater creates focused
+files on demand. An explicit request such as `重新进行全量知识蒸馏和访谈` starts
+a full scan and owner interview even when the state is `complete`.
 
 Legacy project-local SessionEnd entries that reference the former runner are
 reported during Agent Seed onboarding and removed only after approval.

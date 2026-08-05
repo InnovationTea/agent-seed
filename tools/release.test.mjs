@@ -540,6 +540,9 @@ test("knowledge-updater bundled skill defines recurring bounded knowledge mainte
   assert.match(skill, /Knowledge assets: not initialized/);
   assert.match(skill, /Knowledge assets: conflict, not updated/);
   assert.match(skill, /Knowledge assets: update failed/);
+  assert.match(skill, /does not.*start.*initial.*distillation/is);
+  assert.match(skill, /does not.*mark.*distillation.*complete/is);
+  assert.match(skill, /agents\.d.*absent.*create/is);
 
   const codexPrompt = await readFile(
     path.join(rootDir, "skill", "bundled-skills", "knowledge-updater", "overlays", "codex", "agents", "openai.yaml"),
@@ -572,6 +575,26 @@ test("Agent Seed installs a knowledge-updater completion rule without lifecycle 
   assert.doesNotMatch(frontmatter, /add newly discovered project knowledge/i);
   assert.doesNotMatch(skill, /Update existing onboarding assets when reusable project knowledge appears during later agent work/i);
   assert.match(skill, /explicitly requests.*Agent Seed.*refresh/is);
+});
+
+test("Agent Seed uses a lazy distillation marker and supports explicit full refresh", async () => {
+  const rootDir = process.cwd();
+  const skill = await readFile(path.join(rootDir, "skill", "SKILL.md"), "utf8");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+
+  for (const content of [skill, outputAssets, readme]) {
+    assert.match(content, /knowledge_distillation/);
+    assert.match(content, /status.*complete/is);
+    assert.match(content, /AGENTS\.md.*agents\.d/is);
+  }
+  assert.match(skill, /missing.*invalid.*in_progress.*failed/is);
+  assert.match(skill, /only after.*fresh-agent.*dry run.*self-review/is);
+  assert.match(skill, /full refresh.*bypass.*complete/is);
+  assert.match(skill, /重新进行全量知识蒸馏和访谈/);
+  assert.match(outputAssets, /agents\.d.*on demand|on demand.*agents\.d/is);
+  assert.match(outputAssets, /after.*agent-seed-updater.*knowledge_distillation/is);
+  assert.match(outputAssets, /invoke[\s>]*Agent Seed onboarding/i);
 });
 
 test("Agent Seed treats legacy SessionEnd hooks as approval-gated migration", async () => {
@@ -926,6 +949,8 @@ test("Agent Seed documents recurring prompts for required integrations", async (
   assert.match(prompt, /full-access.*install.*verify/i);
   assert.match(prompt, /git-code-tracker/i);
   assert.match(prompt, /OpenCLI/i);
+  assert.match(prompt, /knowledge_distillation/);
+  assert.match(prompt, /full.*distillation.*interviews.*bypass/i);
 });
 
 test("Codex default prompt makes bundled package installs mode aware", async () => {

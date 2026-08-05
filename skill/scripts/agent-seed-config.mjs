@@ -3,6 +3,7 @@ import path from "node:path";
 
 export const SHARED_CONFIG_FILE = path.join(".agents", "agent-seed.json");
 export const LOCAL_CONFIG_FILE = path.join(".agents", "agent-seed.local.json");
+export const KNOWLEDGE_DISTILLATION_STATUSES = Object.freeze(["in_progress", "complete", "failed"]);
 
 const SHARED_SELF_UPDATE_KEYS = new Set(["check_on_start", "check_interval_hours", "update_mode"]);
 const LOCAL_SELF_UPDATE_KEYS = new Set(["proxy", "last_check"]);
@@ -10,6 +11,7 @@ const KNOWN_TOP_LEVEL_KEYS = new Set([
   "schema_version",
   "minimum_agent_seed_version",
   "knowledge_asset_write_mode",
+  "knowledge_distillation",
   "self_update",
   "installation",
   "install_prompt_history",
@@ -39,6 +41,7 @@ export function resolveAgentSeedConfig({ shared = {}, local = {} } = {}) {
       schema_version: shared.schema_version,
       minimum_agent_seed_version: shared.minimum_agent_seed_version,
       knowledge_asset_write_mode: shared.knowledge_asset_write_mode,
+      knowledge_distillation: shared.knowledge_distillation,
       installation: local.installation,
       install_prompt_history: local.install_prompt_history,
     }),
@@ -59,6 +62,45 @@ export function assessMinimumAgentSeedVersion({ installedVersion, minimumVersion
   if (comparison < 0) return { state: "version-incompatible", installed_version: installed, minimum_version: minimum };
   if (comparison === 0) return { state: "version-current", installed_version: installed, minimum_version: minimum };
   return { state: "baseline-refresh-available", installed_version: installed, minimum_version: minimum };
+}
+
+export function getKnowledgeDistillationState(shared = {}) {
+  const state = shared?.knowledge_distillation;
+  if (!isPlainObject(state) || typeof state.status !== "string") return { status: "missing" };
+  if (!KNOWLEDGE_DISTILLATION_STATUSES.includes(state.status)) {
+    return { status: "missing", reason: "invalid-status" };
+  }
+  if (state.status === "complete" && (typeof state.completed_at !== "string" || !state.completed_at.trim())) {
+    return { status: "missing", reason: "invalid-complete" };
+  }
+  return { ...state };
+}
+
+export function shouldStartKnowledgeDistillation({ shared = {}, hasAgentsFile = false, forceFullRefresh = false } = {}) {
+  if (forceFullRefresh) return true;
+  return getKnowledgeDistillationState(shared).status !== "complete" || hasAgentsFile !== true;
+}
+
+export async function writeKnowledgeDistillationState({ targetDir, state } = {}) {
+  if (!isPlainObject(state) || typeof state.status !== "string") {
+    throw new Error("Knowledge distillation state must include a status.");
+  }
+  if (!KNOWLEDGE_DISTILLATION_STATUSES.includes(state.status)) {
+    throw new Error(`Unsupported knowledge distillation status: ${state.status}`);
+  }
+  if (state.status === "complete" && (typeof state.completed_at !== "string" || !state.completed_at.trim())) {
+    throw new Error("completed_at is required when knowledge distillation is complete.");
+  }
+
+  const files = await readAgentSeedFiles(targetDir);
+  if (files.legacy) throw new Error("Migrate the legacy Agent Seed config before writing knowledge distillation state.");
+  const next = {
+    ...files.shared,
+    schema_version: 2,
+    knowledge_distillation: { ...state },
+  };
+  await writeSharedAgentSeedConfig({ targetDir, config: next });
+  return next.knowledge_distillation;
 }
 
 export async function refreshAgentSeedBaseline({ targetDir, installedVersion, approved = false } = {}) {
@@ -85,7 +127,10 @@ export function splitLegacyAgentSeedConfig(legacy, installedVersion) {
   const shared = {
     schema_version: 2,
     minimum_agent_seed_version: baseline,
-    ...pickDefined({ knowledge_asset_write_mode: legacy.knowledge_asset_write_mode }),
+    ...pickDefined({
+      knowledge_asset_write_mode: legacy.knowledge_asset_write_mode,
+      knowledge_distillation: legacy.knowledge_distillation,
+    }),
   };
   if (Object.keys(sharedSelfUpdate).length > 0) shared.self_update = sharedSelfUpdate;
 
@@ -169,6 +214,7 @@ function assertSupportedLocalSchema(local) {
 function assertValidLegacyFields(legacy) {
   assertOptionalObject(legacy, "self_update", "legacy Agent Seed");
   assertOptionalObject(legacy, "installation", "legacy Agent Seed");
+  assertOptionalObject(legacy, "knowledge_distillation", "legacy Agent Seed");
   assertOptionalObject(legacy, "legacy_unclassified", "legacy Agent Seed");
   if (legacy.install_prompt_history !== undefined && !Array.isArray(legacy.install_prompt_history)) {
     throw new Error("Invalid legacy Agent Seed field: install_prompt_history");

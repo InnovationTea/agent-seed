@@ -41,6 +41,12 @@ The installed completion rule authorizes minimal edits to `AGENTS.md` and `agent
 
 If candidate knowledge contradicts existing guidance, do not choose a winner and do not edit either rule. Report the conflict so the owner can resolve it later. Treat equivalent wording as a duplicate.
 
+This skill does not start initial knowledge distillation, full repository scans,
+or owner interviews, and it does not mark `knowledge_distillation` complete.
+The absence of `agents.d/` is valid; create one standard focused file only when
+the current task produces detailed eligible knowledge, then link it from
+`AGENTS.md`.
+
 ## Status
 
 Return exactly one status for the main agent to append to its final response:
