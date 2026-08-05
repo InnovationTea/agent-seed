@@ -4,6 +4,128 @@ This repository contains the source and release tooling for the `agent-seed` Cod
 
 `agent-seed` distills repository evidence and owner knowledge into executable agent runbooks, review checkpoints, and project-local guidance. Its goal is to seed a codebase with the knowledge coding agents need to develop in safe self-directed loops while humans focus on review, approval, and the few decisions that require project-owner judgment.
 
+Language: [English](README.md) | [简体中文](README.zh-CN.md)
+
+## Quick Start
+
+Use Agent Seed from the project you want to make agent-ready. Install the released
+`agent-seed` skill with your agent platform's normal skill installation flow, then
+invoke `/agent-seed` in the target project. For a tagged release, download the
+`agent-seed.zip` asset from the [GitHub Releases](https://github.com/InnovationTea/agent-seed/releases)
+page and install the expanded directory; the package must have `SKILL.md` at the
+skill root. If the current directory is the Agent Seed source repository, pass
+the target project path instead of scanning this repository.
+
+### First conversation
+
+1. Agent Seed resolves the `knowledge_asset_write_mode`, checks the installed
+   Agent Seed version, and reads the bundled-skill, bundled-package, and external
+   plugin manifests.
+2. It installs and verifies applicable default integrations before onboarding.
+   `full-access` does this automatically; `agent-approve` and `ask-each-change`
+   ask for approval according to their policies.
+3. It checks `.agents/agent-seed.json` and `AGENTS.md`. A missing or invalid
+   `knowledge_distillation` state, or a missing `AGENTS.md`, starts first-run
+   onboarding. The scan and owner interview produce `AGENTS.md` and only the
+   focused `agents.d/` runbooks that are needed, then record a verified
+   `complete` state.
+4. Continue with normal development. After every completed and verified task,
+   the project-local `knowledge-updater` records only durable knowledge from
+   that conversation before the final response.
+
+`agents.d/` does not need to exist before the first run. It is created on demand
+when a detailed knowledge-updater entry is useful; the completion signal is the
+valid `knowledge_distillation` state together with `AGENTS.md`, not the directory.
+
+### Permission modes
+
+Set the shared policy in `.agents/agent-seed.json`, or choose a mode in the
+current request. The current request wins, then the shared file, then the
+default `full-access`:
+
+| Mode | Behavior |
+| --- | --- |
+| `full-access` | Install and verify every applicable default, including declared network, personal/global writes, project instruction edits, and package side effects, without a second prompt. Secrets, production actions, destructive actions, standalone hooks, and unresolved conflicts still require approval. |
+| `agent-approve` | Make edits inside the confirmed onboarding/update scope, but ask before installs, install-time network access, hooks, personal/global writes, broad rewrites, conflicts, or other out-of-scope changes. |
+| `ask-each-change` | Ask before each onboarding or knowledge-file creation/edit and before every install; install-time network access and personal/global writes also require approval. |
+
+```json
+{
+  "schema_version": 2,
+  "minimum_agent_seed_version": "v0.3.8",
+  "knowledge_asset_write_mode": "full-access"
+}
+```
+
+### Skills, packages, and plugins
+
+Agent Seed reads `skill/bundled-skills.json`, `skill/bundled-packages.json`, and
+`skill/external-packages.json` as the source of truth. It detects the active
+platform from the target project or runtime and does not install an unrelated
+platform's files.
+
+- **Bundled direct skills** are copied into project-local platform directories.
+  `agent-seed-updater` runs once at the start of a new conversation, and
+  `knowledge-updater` runs after each completed task. `gitpush`, `gitsync`,
+  `gittag`, and `ticket-lookup` are available when their workflows are needed.
+  Existing target directories require a decision. Personal/global targets must
+  be explicitly selected by the owner; in `full-access` that selection
+  authorizes declared writes without another install prompt, while gated modes
+  still ask for approval.
+- **Bundled packages** include `git-code-tracker`. When its platform gate
+  applies, install it with:
+
+  ```sh
+  node scripts/install-git-code-tracker.mjs <target-project> [--platform <platform>]
+  ```
+
+  The installer may write platform skill files, commands, `AGENTS.md`,
+  `.ai-tracking/`, `.gitignore`, and Git hooks. Review those declared effects
+  before approving an install in a gated mode.
+- **External plugins** remain owned by the agent platform and are installed
+  through its normal network-backed flow; Agent Seed does not vendor plugin
+  internals. The external plugin manifest supplies platform-native instructions
+  for planning, browser automation, requirements lookup, and framework-specific
+  tooling. In approval-gated modes, the owner approves each applicable offer;
+  in `full-access`, applicable defaults are installed and verified automatically.
+
+### Lazy knowledge distillation
+
+The first project conversation does not perform a full repository scan merely
+because Agent Seed is installed. It checks the lightweight state marker first:
+
+```json
+{
+  "knowledge_distillation": {
+    "status": "complete",
+    "completed_at": "2026-08-05T10:00:00.000Z",
+    "agent_seed_version": "v0.3.8"
+  }
+}
+```
+
+`missing`, invalid, `in_progress`, or `failed` means onboarding is still needed.
+`complete` skips automatic onboarding only when `AGENTS.md` also exists. A
+successful onboarding writes `in_progress` first and records `complete` only
+after the scan, owner interview, asset writes, fresh-agent dry run, and
+self-review succeed.
+
+To intentionally run a full refresh and owner interview again, invoke Agent
+Seed with an explicit request such as `run a full knowledge distillation and
+owner interview for this project` or `重新进行全量知识蒸馏和访谈`. The request
+bypasses `complete`, preserves existing assets, and leaves the state non-complete
+if the refresh fails so it can be retried.
+
+### Incremental knowledge updates
+
+`knowledge-updater` is deliberately lightweight. Run it after the task's tests
+and verification, immediately before the final response. It reads only durable
+facts from the current conversation plus existing `AGENTS.md` and relevant
+`agents.d/` files. It does not run Agent Seed, scan the repository, interview the
+owner, read transcripts, use the network, or start child agents. It makes the
+smallest coherent edit and reports exactly one of `updated`, `no new reusable
+knowledge`, `not initialized`, `conflict`, or `update failed`.
+
 ## Repository Layout
 
 ```text
@@ -25,7 +147,8 @@ This repository contains the source and release tooling for the `agent-seed` Cod
 |   `-- release.test.mjs
 |-- outputs/               # Generated release artifacts, ignored by Git
 |-- Makefile               # Thin command entry point
-`-- README.md
+|-- README.md
+`-- README.zh-CN.md
 ```
 
 The release package is built from `skill/` only. Root-level files such as this README, `Makefile`, and `tools/` are maintainer assets and are not copied into the published skill artifact. The `skill/` directory name is intentionally generic: it is the release package source root, so its contents become the top level of the published `agent-seed` skill.

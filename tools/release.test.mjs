@@ -345,6 +345,26 @@ test("README documents the lightweight Agent Seed updater lifecycle", async () =
   assert.match(readme, /does not.*repository scan|no repository scan/is);
 });
 
+test("README provides a bilingual user quick start for onboarding and skill installs", async () => {
+  const rootDir = process.cwd();
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+  const chineseReadmePath = path.join(rootDir, "README.zh-CN.md");
+
+  assert.equal(await exists(chineseReadmePath), true);
+  assert.match(readme, /README\.zh-CN\.md/);
+  assert.match(readme, /## Quick Start/);
+  assert.match(readme, /lazy|first-run|knowledge distillation/i);
+  assert.match(readme, /bundled skills|plugins|full-access/i);
+  assert.match(readme, /full refresh|owner interview/i);
+
+  const chineseReadme = await readFile(chineseReadmePath, "utf8");
+  assert.match(chineseReadme, /快速入门/);
+  assert.match(chineseReadme, /首次.*蒸馏|知识蒸馏/);
+  assert.match(chineseReadme, /skill|插件|安装/i);
+  assert.match(chineseReadme, /全量.*蒸馏|重新.*访谈/);
+  assert.match(chineseReadme, /full-access|ask-each-change|agent-approve/);
+});
+
 test("bundled install manifests require activation preflight handling", async () => {
   const rootDir = process.cwd();
   const bundledSkills = JSON.parse(await readFile(path.join(rootDir, "skill", "bundled-skills.json"), "utf8"));
