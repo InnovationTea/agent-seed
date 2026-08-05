@@ -951,6 +951,7 @@ test("Agent Seed documents recurring prompts for required integrations", async (
   assert.match(prompt, /OpenCLI/i);
   assert.match(prompt, /knowledge_distillation/);
   assert.match(prompt, /full.*distillation.*interviews.*bypass/i);
+  assert.match(prompt, /complete.*AGENTS\.md.*absent|AGENTS\.md.*absent.*complete/is);
 });
 
 test("Codex default prompt makes bundled package installs mode aware", async () => {

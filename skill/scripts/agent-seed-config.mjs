@@ -70,7 +70,7 @@ export function getKnowledgeDistillationState(shared = {}) {
   if (!KNOWLEDGE_DISTILLATION_STATUSES.includes(state.status)) {
     return { status: "missing", reason: "invalid-status" };
   }
-  if (state.status === "complete" && (typeof state.completed_at !== "string" || !state.completed_at.trim())) {
+  if (state.status === "complete" && !isValidKnowledgeDistillationTimestamp(state.completed_at)) {
     return { status: "missing", reason: "invalid-complete" };
   }
   return { ...state };
@@ -88,7 +88,7 @@ export async function writeKnowledgeDistillationState({ targetDir, state } = {})
   if (!KNOWLEDGE_DISTILLATION_STATUSES.includes(state.status)) {
     throw new Error(`Unsupported knowledge distillation status: ${state.status}`);
   }
-  if (state.status === "complete" && (typeof state.completed_at !== "string" || !state.completed_at.trim())) {
+  if (state.status === "complete" && !isValidKnowledgeDistillationTimestamp(state.completed_at)) {
     throw new Error("completed_at is required when knowledge distillation is complete.");
   }
 
@@ -215,6 +215,9 @@ function assertValidLegacyFields(legacy) {
   assertOptionalObject(legacy, "self_update", "legacy Agent Seed");
   assertOptionalObject(legacy, "installation", "legacy Agent Seed");
   assertOptionalObject(legacy, "knowledge_distillation", "legacy Agent Seed");
+  if (legacy.knowledge_distillation !== undefined && !isValidKnowledgeDistillationState(legacy.knowledge_distillation)) {
+    throw new Error("Invalid legacy Agent Seed field: knowledge_distillation");
+  }
   assertOptionalObject(legacy, "legacy_unclassified", "legacy Agent Seed");
   if (legacy.install_prompt_history !== undefined && !Array.isArray(legacy.install_prompt_history)) {
     throw new Error("Invalid legacy Agent Seed field: install_prompt_history");
@@ -268,6 +271,16 @@ function selectInitialBaseline(existing, installed) {
 function normalizeVersion(value) {
   if (typeof value !== "string" || !/^v?\d+(?:\.\d+)*$/.test(value)) return "";
   return value.startsWith("v") ? value : `v${value}`;
+}
+
+function isValidKnowledgeDistillationState(state) {
+  if (!isPlainObject(state) || typeof state.status !== "string") return false;
+  if (!KNOWLEDGE_DISTILLATION_STATUSES.includes(state.status)) return false;
+  return state.status !== "complete" || isValidKnowledgeDistillationTimestamp(state.completed_at);
+}
+
+function isValidKnowledgeDistillationTimestamp(value) {
+  return typeof value === "string" && value.trim() !== "" && Number.isFinite(Date.parse(value));
 }
 
 function compareVersions(left, right) {
