@@ -689,15 +689,16 @@ function resolveInside(rootDir, relativePath, label) {
 function parseArgs(args) {
   const [command, targetDir, ...rest] = args;
   if (!command || !targetDir || !["check", "apply", "decline"].includes(command)) {
-    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply|decline> <target-project> --platform <platform> [--name <name>] [--approved] [--confirmed] [--json]");
+    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply|decline> <target-project> --platform <platform> [--name <name>|--all] [--approved] [--confirmed] [--json]");
   }
 
-  const options = { command, targetDir, platform: "", name: "", approved: false, confirmed: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
+  const options = { command, targetDir, platform: "", name: "", all: false, approved: false, confirmed: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--approved") options.approved = true;
     else if (arg === "--confirmed") options.confirmed = true;
     else if (arg === "--json") options.json = true;
+    else if (arg === "--all") options.all = true;
     else if (["--platform", "--name", "--skill-root"].includes(arg)) {
       const value = rest[index += 1];
       if (!value) throw new Error(`${arg} requires a value`);
@@ -707,7 +708,10 @@ function parseArgs(args) {
     } else throw new Error(`Unexpected argument: ${arg}`);
   }
   if (!options.platform) throw new Error("--platform is required");
-  if (["apply", "decline"].includes(command) && !options.name) throw new Error(`--name is required for ${command}`);
+  if (options.all && command !== "apply") throw new Error("--all is only supported for apply");
+  if (options.all && options.name) throw new Error("--all and --name are mutually exclusive");
+  if (command === "apply" && !options.all && !options.name) throw new Error("--name or --all is required for apply");
+  if (command === "decline" && !options.name) throw new Error("--name is required for decline");
   if (command === "apply" && !options.approved) throw new Error("--approved is required for apply");
   if (command === "decline" && !options.confirmed) throw new Error("--confirmed is required for decline");
   return options;
@@ -718,7 +722,7 @@ async function runCli(args) {
   const result = options.command === "check"
     ? await inspectManagedUpdates(options)
     : options.command === "apply"
-      ? await applyManagedUpdate(options)
+      ? options.all ? await applyManagedUpdates(options) : await applyManagedUpdate(options)
       : await recordInstallOfferDecline(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (options.command === "check") console.log(result.managed.map((entry) => `${entry.name}: ${entry.state}`).join("\n"));
