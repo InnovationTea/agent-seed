@@ -394,15 +394,17 @@ function normalizeEntry(entry, platformEntry, kind) {
 
 function normalizePostInstall(postInstall, name) {
   if (postInstall === undefined) return null;
+  const approvalModes = postInstall?.requires_user_approval_in_modes;
   if (!postInstall || typeof postInstall !== "object" || Array.isArray(postInstall)
       || typeof postInstall.action !== "string" || postInstall.action.trim() === ""
-      || postInstall.requires_user_approval !== true
+      || !Array.isArray(approvalModes)
+      || approvalModes.some((mode) => typeof mode !== "string" || mode.trim() === "")
       || !Array.isArray(postInstall.instruction_files)) {
     throw new Error(`Invalid post-install action: ${name}`);
   }
   return {
     action: postInstall.action,
-    requires_user_approval: true,
+    requires_user_approval_in_modes: approvalModes,
     instruction_files: postInstall.instruction_files,
   };
 }
