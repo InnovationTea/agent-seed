@@ -374,6 +374,11 @@ test("bundled install manifests require activation preflight handling", async ()
     assert.equal(config.activation_policy.on_agent_seed_start, "must_check");
     assert.equal(config.activation_policy.approval_gated_default_install_action, "must_offer_before_onboarding");
     assertModeAwareInstallPolicy(config.activation_policy, { appliesToDefaultInstalls: true });
+    assert.deepEqual(config.activation_policy.managed_target_policy, {
+      full_access: "replace-and-verify",
+      approval_gated: "ask-before-write",
+      personal_or_global_target_requires_explicit_request: true,
+    });
   }
 
   assert.equal(bundledSkills.activation_policy.recurring_install_prompt, undefined);
@@ -387,6 +392,7 @@ test("bundled install manifests require activation preflight handling", async ()
 
   for (const entry of bundledSkills.bundled_skills) {
     assertModeAwareItemApproval(entry.default_install);
+    assert.equal(entry.safety, undefined);
     if (entry.post_install) {
       assertModeAwareItemApproval(entry.post_install);
     }
@@ -394,6 +400,7 @@ test("bundled install manifests require activation preflight handling", async ()
 
   for (const entry of bundledPackages.bundled_packages) {
     assertModeAwareItemApproval(entry.default_install);
+    assert.equal(entry.safety, undefined);
   }
 });
 
