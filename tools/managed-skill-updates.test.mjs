@@ -365,6 +365,296 @@ test("managed state migration rejects unknown legacy fields without rewriting", 
   }
 });
 
+test("applyManagedUpdates selects only actionable managed states in manifest order", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-selection-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    const entries = [
+      { name: "update-skill", version: "v1.1.0" },
+      { name: "install-skill", version: "v1.1.0" },
+      { name: "missing-skill", version: "v1.1.0" },
+      { name: "unverified-skill", version: "v1.1.0" },
+      { name: "legacy-skill", version: "v1.1.0" },
+      { name: "current-skill", version: "v1.1.0" },
+      { name: "declined-skill", version: "v1.1.0" },
+      { name: "baseline-skill", version: "v1.1.0" },
+    ];
+    await writeSyntheticManifest(skillRoot, entries);
+    await mkdir(path.join(targetDir, "skills", "update-skill"), { recursive: true });
+    await writeManagedMarker(path.join(targetDir, "skills", "update-skill"), "update-skill", "v1.0.0");
+    await mkdir(path.join(targetDir, "skills", "unverified-skill"), { recursive: true });
+    await writeFile(path.join(targetDir, "skills", "unverified-skill", ".agent-seed-managed.json"), "not json\n");
+    await mkdir(path.join(targetDir, "skills", "legacy-skill"), { recursive: true });
+    await mkdir(path.join(targetDir, "skills", "current-skill"), { recursive: true });
+    await writeManagedMarker(path.join(targetDir, "skills", "current-skill"), "current-skill", "v1.1.0");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [
+        record("update-skill", "v1.0.0"),
+        record("missing-skill", "v1.0.0"),
+        record("unverified-skill", "v1.0.0"),
+        record("current-skill", "v1.1.0"),
+        record("baseline-skill", "v1.2.0"),
+      ],
+      external_integrations: [],
+      declined_install_offers: [{
+        name: "declined-skill",
+        kind: "direct-skill",
+        platform: "codex",
+        offered_version: "v1.1.0",
+        declined_at: "2026-08-06T10:00:00.000Z",
+      }],
+    })}\n`);
+
+    const applied = [];
+    const batch = await manager.applyManagedUpdates({
+      skillRoot,
+      targetDir,
+      platform: "codex",
+      approved: true,
+      applyEntry: async ({ name }) => {
+        applied.push(name);
+        return { status: name === "install-skill" || name === "missing-skill" ? "installed" : "updated" };
+      },
+    });
+
+    assert.deepEqual(applied, ["update-skill", "install-skill", "missing-skill", "unverified-skill", "legacy-skill"]);
+    assert.deepEqual(batch.results.map(({ name, state, result }) => ({ name, state, result })), [
+      { name: "update-skill", state: "update-available", result: "updated" },
+      { name: "install-skill", state: "install-available", result: "installed" },
+      { name: "missing-skill", state: "missing", result: "installed" },
+      { name: "unverified-skill", state: "unverified", result: "updated" },
+      { name: "legacy-skill", state: "legacy-unmanaged", result: "updated" },
+      { name: "current-skill", state: "current", result: "skipped" },
+      { name: "declined-skill", state: "declined-current-version", result: "skipped" },
+      { name: "baseline-skill", state: "baseline-unavailable", result: "skipped" },
+    ]);
+    assert.deepEqual(batch.summary, { selected: 5, succeeded: 5, failed: 0, skipped: 3 });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("applyManagedUpdates preserves an exact-version installation decline", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-decline-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeSyntheticManifest(skillRoot, [{ name: "declined-skill", version: "v1.1.0" }]);
+    await manager.recordInstallOfferDecline({ skillRoot, targetDir, name: "declined-skill", platform: "codex", confirmed: true });
+    const applied = [];
+    const batch = await manager.applyManagedUpdates({
+      skillRoot,
+      targetDir,
+      platform: "codex",
+      approved: true,
+      applyEntry: async ({ name }) => {
+        applied.push(name);
+        return { status: "installed" };
+      },
+    });
+
+    assert.deepEqual(applied, []);
+    assert.deepEqual(batch.results, [{
+      name: "declined-skill",
+      kind: "direct-skill",
+      state: "declined-current-version",
+      result: "skipped",
+    }]);
+    assert.deepEqual(batch.summary, { selected: 0, succeeded: 0, failed: 0, skipped: 1 });
+
+    await writeSyntheticManifest(skillRoot, [{ name: "declined-skill", version: "v1.2.0" }]);
+    const upgraded = await manager.inspectManagedUpdates({ skillRoot, targetDir, platform: "codex" });
+    assert.equal(upgraded.managed[0].state, "install-available");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("applyManagedUpdates does not replace existing targets when the root policy is missing", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-conservative-policy-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeSyntheticManifest(skillRoot, [
+      { name: "existing-skill", version: "v1.1.0" },
+      { name: "new-skill", version: "v1.1.0" },
+    ]);
+    const manifestPath = path.join(skillRoot, "bundled-skills.json");
+    const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
+    delete manifest.activation_policy;
+    await writeFile(manifestPath, `${JSON.stringify(manifest)}\n`);
+    await mkdir(path.join(skillRoot, "bundled-skills", "new-skill", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "new-skill", "skill", "SKILL.md"), "new\n");
+    await mkdir(path.join(targetDir, "skills", "existing-skill"), { recursive: true });
+    await writeManagedMarker(path.join(targetDir, "skills", "existing-skill"), "existing-skill", "v1.0.0");
+    await mkdir(path.join(targetDir, ".agents"), { recursive: true });
+    await writeFile(path.join(targetDir, ".agents", "managed-skills.json"), `${JSON.stringify({
+      schema_version: 2,
+      managed_skills: [record("existing-skill", "v1.0.0")],
+      external_integrations: [],
+    })}\n`);
+
+    const applied = [];
+    const batch = await manager.applyManagedUpdates({
+      skillRoot,
+      targetDir,
+      platform: "codex",
+      approved: true,
+      applyEntry: async ({ name }) => {
+        applied.push(name);
+        return { status: "installed" };
+      },
+    });
+
+    assert.deepEqual(applied, ["new-skill"]);
+    assert.deepEqual(batch.results.map(({ name, state, result }) => ({ name, state, result })), [
+      { name: "existing-skill", state: "update-available", result: "skipped" },
+      { name: "new-skill", state: "install-available", result: "installed" },
+    ]);
+    assert.deepEqual(batch.summary, { selected: 1, succeeded: 1, failed: 0, skipped: 1 });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("applyManagedUpdates installs direct and package entries and preserves post-install metadata", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-mixed-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeSyntheticManifest(
+      skillRoot,
+      [{
+        name: "direct-skill",
+        version: "v1.1.0",
+        post_install: {
+          action: "refresh-direct-skill",
+          requires_user_approval_in_modes: ["ask-each-change"],
+          instruction_files: ["AGENTS.md"],
+        },
+      }],
+      [{
+        name: "tracker",
+        version: "v1.1.0",
+        kind: "multi-platform-release-asset",
+        default_install: { offer_by_default: true, writes: ["skills/tracker"] },
+        platform_skills: [{ platform: "codex", target_path: "skills/tracker" }],
+      }],
+    );
+    await mkdir(path.join(skillRoot, "bundled-skills", "direct-skill", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "direct-skill", "skill", "SKILL.md"), "direct\n");
+
+    const batch = await manager.applyManagedUpdates({
+      skillRoot,
+      targetDir,
+      platform: "codex",
+      approved: true,
+      installPackage: async () => {
+        await mkdir(path.join(targetDir, "skills", "tracker"), { recursive: true });
+        await writeFile(path.join(targetDir, "skills", "tracker", "SKILL.md"), "tracker\n");
+      },
+    });
+
+    assert.deepEqual(batch.summary, { selected: 2, succeeded: 2, failed: 0, skipped: 0 });
+    assert.deepEqual(batch.results.map(({ name, result }) => ({ name, result })), [
+      { name: "direct-skill", result: "installed" },
+      { name: "tracker", result: "installed" },
+    ]);
+    assert.deepEqual(batch.results[0].post_install, {
+      action: "refresh-direct-skill",
+      requires_user_approval_in_modes: ["ask-each-change"],
+      instruction_files: ["AGENTS.md"],
+    });
+    assert.equal((await manager.readManagedState(targetDir)).managed_skills.length, 2);
+    assert.equal(JSON.parse(await readFile(path.join(targetDir, "skills", "direct-skill", ".agent-seed-managed.json"), "utf8")).version, "v1.1.0");
+    assert.equal(JSON.parse(await readFile(path.join(targetDir, "skills", "tracker", ".agent-seed-managed.json"), "utf8")).version, "v1.1.0");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("applyManagedUpdates continues after a direct source failure", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-direct-failure-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeSyntheticManifest(skillRoot, [
+      { name: "broken-skill", version: "v1.1.0" },
+      { name: "later-skill", version: "v1.1.0" },
+    ]);
+    await mkdir(path.join(skillRoot, "bundled-skills", "later-skill", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "later-skill", "skill", "SKILL.md"), "later\n");
+
+    const batch = await manager.applyManagedUpdates({ skillRoot, targetDir, platform: "codex", approved: true });
+
+    assert.equal(batch.results[0].name, "broken-skill");
+    assert.equal(batch.results[0].result, "failed");
+    assert.match(batch.results[0].error, /ENOENT|no such file/i);
+    assert.deepEqual(batch.results[1], {
+      name: "later-skill",
+      kind: "direct-skill",
+      state: "install-available",
+      result: "installed",
+    });
+    assert.equal(await readFile(path.join(targetDir, "skills", "later-skill", "SKILL.md"), "utf8"), "later\n");
+    assert.deepEqual(batch.summary, { selected: 2, succeeded: 1, failed: 1, skipped: 0 });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("applyManagedUpdates restores a failed package before continuing", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-batch-package-failure-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+
+  try {
+    await writeSyntheticManifest(
+      skillRoot,
+      [{ name: "later-skill", version: "v1.1.0" }],
+      [{
+        name: "tracker",
+        version: "v1.1.0",
+        default_install: { offer_by_default: true, writes: ["skills/tracker"] },
+        platform_skills: [{ platform: "codex", target_path: "skills/tracker" }],
+      }],
+    );
+    await mkdir(path.join(skillRoot, "bundled-skills", "later-skill", "skill"), { recursive: true });
+    await writeFile(path.join(skillRoot, "bundled-skills", "later-skill", "skill", "SKILL.md"), "later\n");
+    await mkdir(path.join(targetDir, "skills", "tracker"), { recursive: true });
+    await writeFile(path.join(targetDir, "skills", "tracker", "SKILL.md"), "original tracker\n");
+
+    const batch = await manager.applyManagedUpdates({
+      skillRoot,
+      targetDir,
+      platform: "codex",
+      approved: true,
+      installPackage: async () => {
+        await writeFile(path.join(targetDir, "skills", "tracker", "SKILL.md"), "broken tracker\n");
+        throw new Error("package installer failed");
+      },
+    });
+
+    assert.equal(batch.results[0].name, "later-skill");
+    assert.equal(batch.results[0].result, "installed");
+    assert.equal(batch.results[1].result, "failed");
+    assert.match(batch.results[1].error, /package installer failed/);
+    assert.equal(await readFile(path.join(targetDir, "skills", "tracker", "SKILL.md"), "utf8"), "original tracker\n");
+    assert.equal(await readFile(path.join(targetDir, "skills", "later-skill", "SKILL.md"), "utf8"), "later\n");
+    assert.deepEqual(batch.summary, { selected: 2, succeeded: 1, failed: 1, skipped: 0 });
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("applyManagedUpdate replaces an approved direct skill and records its version", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-apply-"));
   const skillRoot = path.join(rootDir, "skill-root");
@@ -774,7 +1064,19 @@ async function writeManifest(skillRoot, version = "v1.1.0") {
       })),
     })}\n`,
   );
-  await writeFile(path.join(skillRoot, "bundled-packages.json"), '{"bundled_packages":[]}\n');
+  await writeFile(
+    path.join(skillRoot, "bundled-packages.json"),
+    `${JSON.stringify({
+      activation_policy: {
+        managed_target_policy: {
+          full_access: "replace-and-verify",
+          approval_gated: "ask-before-write",
+          personal_or_global_target_requires_explicit_request: true,
+        },
+      },
+      bundled_packages: [],
+    })}\n`,
+  );
 }
 
 async function writePackageManifest(skillRoot) {
@@ -796,6 +1098,44 @@ async function writePackageManifest(skillRoot) {
         default_install: { writes: ["skills/tracker"] },
         platform_skills: [{ platform: "codex", target_path: "skills/tracker" }],
       }],
+    })}\n`,
+  );
+}
+
+async function writeSyntheticManifest(skillRoot, entries, packages = []) {
+  await mkdir(skillRoot, { recursive: true });
+  await writeFile(
+    path.join(skillRoot, "bundled-skills.json"),
+    `${JSON.stringify({
+      activation_policy: {
+        managed_target_policy: {
+          full_access: "replace-and-verify",
+          approval_gated: "ask-before-write",
+          personal_or_global_target_requires_explicit_request: true,
+        },
+      },
+      bundled_skills: entries.map(({ name, version, post_install }) => ({
+        name,
+        version,
+        kind: "multi-platform-direct-skill",
+        source_path: `bundled-skills/${name}/skill`,
+        default_install: { offer_by_default: true },
+        ...(post_install ? { post_install } : {}),
+        platforms: [{ platform: "codex", target_path: `skills/${name}` }],
+      })),
+    })}\n`,
+  );
+  await writeFile(
+    path.join(skillRoot, "bundled-packages.json"),
+    `${JSON.stringify({
+      activation_policy: {
+        managed_target_policy: {
+          full_access: "replace-and-verify",
+          approval_gated: "ask-before-write",
+          personal_or_global_target_requires_explicit_request: true,
+        },
+      },
+      bundled_packages: packages,
     })}\n`,
   );
 }
