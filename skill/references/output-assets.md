@@ -38,9 +38,10 @@ startup rule to `AGENTS.md`:
 
 Codex and OpenCode read the canonical startup rule from `AGENTS.md`. For Claude
 Code and codeagent-cli (cac), add or preserve a root `CLAUDE.md` import of
-`@AGENTS.md`. The updater installation and these disclosed instruction edits
-require owner approval. Do not add a recurring hash scan, automatic upgrade,
-lifecycle hook, or external-plugin directory replacement.
+`@AGENTS.md`. In `full-access`, declared updater installation and instruction
+edits may run automatically; approval-gated modes require owner approval. Do
+not add a recurring hash scan, automatic Agent Seed self-upgrade, lifecycle
+hook, or external-plugin directory replacement.
 
 Verify the updater target and startup-rule visibility independently. When a
 pre-existing or partial installation verifies but has a missing startup rule,
@@ -53,6 +54,32 @@ preflight. After the approved `agent-seed-updater` install succeeds, replace
 only that obsolete direct manager preflight and preserve unrelated project
 instructions. Do not use this migration to scan the repository, interview the
 owner, or repeat knowledge distillation.
+
+## Managed Skill Synchronization
+
+The installed `agent-seed-updater` resolves the effective
+`knowledge_asset_write_mode` before its combined preflight. In `full-access`,
+the root `activation_policy.managed_target_policy` enables automatic managed
+synchronization of declared project-local bundled skills and packages:
+
+```bash
+node <agent-seed-root>/scripts/manage-managed-skills.mjs apply <project-root> --all --platform <platform> --skill-root <agent-seed-root> --approved --json
+```
+
+The batch selects `update-available`, `install-available`, `missing`,
+`unverified`, and `legacy-unmanaged` in manifest order, while skipping
+`current`, `declined-current-version`, and `baseline-unavailable`. An
+exact-version decline remains suppressed until a higher manifest version
+appears.
+Each entry has its own backup and rollback; when an entry has failed, report the
+failed rollback and continue with later entries. In approval-gated modes,
+retain approval-gated per-entry prompts and use the existing `--name` apply or
+`--confirmed` decline command.
+
+Apply returned `post_install` actions within their declared scope, then rerun
+the combined preflight. External integrations remain platform-native and
+platform-owned: Agent Seed reports them but never copies, deletes, or replaces
+an external plugin directory.
 
 After an approved project-local `knowledge-updater` install, add this concise
 portable completion rule to `AGENTS.md` and keep the detailed workflow in the
@@ -69,14 +96,15 @@ Code and codeagent-cli (cac), add or preserve a root `CLAUDE.md` import of
 > or cannot be invoked, append `Knowledge assets: update failed (skill
 > unavailable)` and finish the main task normally.
 
-The skill installation and required `AGENTS.md` or `CLAUDE.md` edits require
-owner approval. Verify the selected platform's skill target and host-visible
-completion rule independently. If the skill is installed but the completion
-rule or import is missing, offer an approval-gated repair even though the skill
-itself already verifies. Treat a copied skill followed by a failed instruction
-edit as a recoverable partial installation: keep the skill and report the exact
-missing rule or import for repair. Do not generate lifecycle or SessionEnd
-hooks.
+In `full-access`, declared skill installation and its declared `AGENTS.md` or
+`CLAUDE.md` post-install edits can run without another prompt; approval-gated
+modes require owner approval. Verify the selected platform's skill target and
+host-visible completion rule independently. If the skill is installed but the
+completion rule or import is missing, offer a mode-appropriate repair even
+though the skill itself already verifies. Treat a copied skill followed by a
+failed instruction edit as a recoverable partial installation: keep the skill
+and report the exact missing rule or import for repair. Do not generate
+lifecycle or SessionEnd hooks.
 
 Generate `agents.d/` by default for knowledge distillation, but do not create an
 empty directory during lightweight initialization. If it is absent, the
@@ -136,9 +164,9 @@ or clear this state.
 
 Recommend external platform plugins when a mature cross-project tool should be installed through Codex, Claude Code, OpenCode, or another platform's normal network-backed plugin flow instead of being bundled into the generated project assets.
 
-If `bundled-skills.json` exists in this skill, inspect it before proposing bundled direct skills. Use it as the source of truth for direct skill source paths, supported platforms, target paths, overlays, activation policy, default-offer rules, verification, and safety policy.
+If `bundled-skills.json` exists in this skill, inspect it before proposing bundled direct skills. Use it as the source of truth for direct skill source paths, supported platforms, target paths, overlays, activation policy, default-offer rules, verification, and the root `activation_policy.managed_target_policy`.
 
-If `bundled-packages.json` exists in this skill, inspect it before proposing bundled packages or platform skills. Use it as the source of truth for vendored package versions, source commits, package paths, nested platform skill paths, activation policy, install commands, and safety policy. Resolve `<package-dir>` from the configured package path before showing or running an installer.
+If `bundled-packages.json` exists in this skill, inspect it before proposing bundled packages or platform skills. Use it as the source of truth for vendored package versions, source commits, package paths, nested platform skill paths, activation policy, install commands, and the root `activation_policy.managed_target_policy`. Resolve `<package-dir>` from the configured package path before showing or running an installer.
 
 ## AGENTS.md
 
@@ -354,13 +382,13 @@ For each bundled direct skill, document:
 - Default install mode, whether to offer by default, and approval behavior by mode.
 - Platform target paths, overlay paths, and detection evidence for Codex, Claude Code, codeagent-cli (cac), OpenCode, or other supported tools.
 - Exact copy behavior: copy the `source_path` directory into each selected platform target path, then apply the platform overlay if one is configured.
-- Existing target behavior: stop and ask the user whether to skip, replace, or manually merge when the target path already exists.
+- Existing target behavior: apply the root `managed_target_policy`; `full-access` may replace and verify a declared project-local target, while approval-gated modes ask before each existing-target write.
 - Verification step after install for each selected platform.
-- Safety level: autonomous, ask first, or never install automatically.
+- Root managed-target policy and any entry-specific declared write scope; do not recreate removed per-entry safety blocks.
 
 Install direct bundled skills only for platforms the owner explicitly uses or repository evidence detects. Detection evidence includes owner answers and platform-specific project files such as `.codex`, `skills/`, `.claude`, `CLAUDE.md`, `.cac`, `.opencode`, `opencode.json`, or `.opencode.yaml`. Treat `.cac/` as codeagent-cli (cac), a Claude-compatible directory layout. Do not treat `AGENTS.md` by itself as proof that Codex project-local skills should be installed. Do not create platform directories for unknown or unused platforms by default.
 
-When `bundled-skills.json` marks `default_install.offer_by_default`, apply the resolved mode after selecting the project platforms. In `full-access`, copy and verify the applicable default without a separate prompt. In `ask-each-change` and `agent-approve`, proactively offer it and run the copy only after approval. A selected personal/global target is authorized in `full-access`; the approval-gated modes require explicit approval for that target.
+When `bundled-skills.json` marks `default_install.offer_by_default`, apply the resolved mode after selecting the project platforms. In `full-access`, copy and verify the applicable default without a separate prompt when the root policy authorizes it. In `ask-each-change` and `agent-approve`, proactively offer it and run the copy only after approval. A personal/global target requires an explicit owner request in every mode.
 
 After an authorized `knowledge-updater` install succeeds, also add the recurring
 task-completion rule from Asset Selection to `AGENTS.md`. This is the only
@@ -393,9 +421,9 @@ For each bundled package, document:
 - Exact package installation step or manual copy instruction.
 - Files or directories the installer may write.
 - Verification step after install for each platform skill.
-- Safety level: autonomous, ask first, or never install automatically.
+- Root managed-target policy and declared package write roots; do not duplicate shared safety policy on each entry.
 
-When `bundled-packages.json` marks `default_install.offer_by_default`, apply the resolved mode after its applicability and platform gates pass. In `full-access`, run and verify the installer without a separate prompt; authorization includes every path and side effect declared by the manifest. In `ask-each-change` and `agent-approve`, disclose those effects and run only after approval. A selected personal/global target is authorized in `full-access`; the approval-gated modes require explicit approval for that target.
+When `bundled-packages.json` marks `default_install.offer_by_default`, apply the resolved mode after its applicability and platform gates pass. In `full-access`, run and verify the installer without a separate prompt; authorization includes every path and side effect declared by the manifest. In `ask-each-change` and `agent-approve`, disclose those effects and run only after approval. A personal/global target requires an explicit owner request in every mode.
 
 If the platform supports direct repository-local skill loading, document that path instead of copying files.
 
