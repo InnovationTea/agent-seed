@@ -56,6 +56,22 @@ test("inspectManagedUpdates reports current, available, missing, and legacy dire
   }
 });
 
+test("inspectManagedUpdates accepts the mode-aware post-install action in the bundled manifest", async () => {
+  const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-canonical-manifest-"));
+
+  try {
+    const report = await manager.inspectManagedUpdates({
+      skillRoot: path.join(process.cwd(), "skill"),
+      targetDir,
+      platform: "claude",
+    });
+
+    assert.equal(report.managed.find((entry) => entry.name === "agent-seed-updater").state, "install-available");
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
 test("readManagedState returns an empty state for an unmanaged project", async () => {
   const targetDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-state-"));
 
@@ -508,7 +524,7 @@ test("installing agent-seed-updater returns the startup-rule migration action", 
       default_install: { offer_by_default: true },
       post_install: {
         action: "ensure-agent-seed-updater-startup-rule",
-        requires_user_approval: true,
+        requires_user_approval_in_modes: ["ask-each-change", "agent-approve"],
         instruction_files: ["AGENTS.md", "CLAUDE.md"],
       },
       platforms: [{ platform: "codex", target_path: "skills/agent-seed-updater" }],
@@ -528,7 +544,7 @@ test("installing agent-seed-updater returns the startup-rule migration action", 
     assert.equal(result.status, "installed");
     assert.deepEqual(result.post_install, {
       action: "ensure-agent-seed-updater-startup-rule",
-      requires_user_approval: true,
+      requires_user_approval_in_modes: ["ask-each-change", "agent-approve"],
       instruction_files: ["AGENTS.md", "CLAUDE.md"],
     });
   } finally {
