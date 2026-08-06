@@ -20,6 +20,11 @@
         "failure_action": "block_onboarding",
         "applies_to_default_installs": true
       }
+    },
+    "managed_target_policy": {
+      "full_access": "replace-and-verify",
+      "approval_gated": "ask-before-write",
+      "personal_or_global_target_requires_explicit_request": true
     }
   },
   "bundled_skills": [
@@ -93,11 +98,7 @@
         ".claude/skills/agent-seed-updater",
         ".cac/skills/agent-seed-updater",
         ".opencode/skills/agent-seed-updater"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     },
     {
       "name": "gitpush",
@@ -158,11 +159,7 @@
         ".claude/skills/gitpush",
         ".cac/skills/gitpush",
         ".opencode/skills/gitpush"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     },
     {
       "name": "gittag",
@@ -223,11 +220,7 @@
         ".claude/skills/gittag",
         ".cac/skills/gittag",
         ".opencode/skills/gittag"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     },
     {
       "name": "gitsync",
@@ -288,11 +281,7 @@
         ".claude/skills/gitsync",
         ".cac/skills/gitsync",
         ".opencode/skills/gitsync"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     },
     {
       "name": "knowledge-updater",
@@ -353,11 +342,7 @@
         ".claude/skills/knowledge-updater",
         ".cac/skills/knowledge-updater",
         ".opencode/skills/knowledge-updater"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     },
     {
       "name": "ticket-lookup",
@@ -422,11 +407,7 @@
         ".claude/skills/ticket-lookup",
         ".cac/skills/ticket-lookup",
         ".opencode/skills/ticket-lookup"
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true,
-        "existing_target_requires_user_decision": true
-      }
+      ]
     }
   ]
 }

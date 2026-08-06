@@ -21,6 +21,11 @@
         "applies_to_default_installs": true
       }
     },
+    "managed_target_policy": {
+      "full_access": "replace-and-verify",
+      "approval_gated": "ask-before-write",
+      "personal_or_global_target_requires_explicit_request": true
+    },
     "recurring_install_prompt": {
       "applies_to": [
         "git-code-tracker"
@@ -103,10 +108,7 @@
           "target_path": ".cac/skills/ai-code-tracker",
           "verification": "node .cac/skills/ai-code-tracker/scripts/install.js --check"
         }
-      ],
-      "safety": {
-        "personal_directory_install_requires_explicit_request": true
-      }
+      ]
     }
   ]
 }

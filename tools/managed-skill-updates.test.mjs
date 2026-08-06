@@ -757,6 +757,13 @@ async function writeManifest(skillRoot, version = "v1.1.0") {
   await writeFile(
     path.join(skillRoot, "bundled-skills.json"),
     `${JSON.stringify({
+      activation_policy: {
+        managed_target_policy: {
+          full_access: "replace-and-verify",
+          approval_gated: "ask-before-write",
+          personal_or_global_target_requires_explicit_request: true,
+        },
+      },
       bundled_skills: ["gitpush", "gittag", "gitsync"].map((name) => ({
       name,
       version,
@@ -776,6 +783,13 @@ async function writePackageManifest(skillRoot) {
   await writeFile(
     path.join(skillRoot, "bundled-packages.json"),
     `${JSON.stringify({
+      activation_policy: {
+        managed_target_policy: {
+          full_access: "replace-and-verify",
+          approval_gated: "ask-before-write",
+          personal_or_global_target_requires_explicit_request: true,
+        },
+      },
       bundled_packages: [{
         name: "tracker",
         version: "v1.1.0",
