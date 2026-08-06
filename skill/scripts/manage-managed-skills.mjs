@@ -21,6 +21,19 @@ const EMPTY_STATE = Object.freeze({
   external_integrations: [],
   declined_install_offers: [],
 });
+const ACTIONABLE_MANAGED_STATES = new Set([
+  "update-available",
+  "install-available",
+  "missing",
+  "unverified",
+  "legacy-unmanaged",
+]);
+const EXISTING_TARGET_STATES = new Set(["update-available", "unverified", "legacy-unmanaged"]);
+const DEFAULT_MANAGED_TARGET_POLICY = Object.freeze({
+  full_access: "ask-before-write",
+  approval_gated: "ask-before-write",
+  personal_or_global_target_requires_explicit_request: true,
+});
 
 export async function readManagedState(targetDir) {
   const statePath = path.join(path.resolve(targetDir), STATE_DIRECTORY, STATE_FILE);
@@ -275,14 +288,94 @@ export async function applyManagedUpdate({ skillRoot, targetDir, name, platform,
   }
 }
 
+export async function applyManagedUpdates({
+  skillRoot,
+  targetDir,
+  platform,
+  approved,
+  applyEntry = applyManagedUpdate,
+  installPackage,
+}) {
+  if (approved !== true) {
+    throw new Error("Owner approval is required to apply a managed update.");
+  }
+
+  const entries = await readManagedEntries(skillRoot, platform);
+  const entryByKey = new Map(entries.map((entry) => [`${entry.kind}:${entry.name}`, entry]));
+  const report = await inspectManagedUpdates({ skillRoot, targetDir, platform });
+  const results = [];
+  let selected = 0;
+  let succeeded = 0;
+  let failed = 0;
+  let skipped = 0;
+
+  for (const inspected of report.managed) {
+    const entry = entryByKey.get(`${inspected.kind}:${inspected.name}`);
+    const selectable = ACTIONABLE_MANAGED_STATES.has(inspected.state)
+      && entry
+      && (entry.managed_target_policy.full_access === "replace-and-verify" || !EXISTING_TARGET_STATES.has(inspected.state));
+    if (!selectable) {
+      skipped += 1;
+      results.push({
+        name: inspected.name,
+        kind: inspected.kind,
+        state: inspected.state,
+        result: "skipped",
+      });
+      continue;
+    }
+
+    selected += 1;
+    try {
+      const applied = await applyEntry({
+        skillRoot,
+        targetDir,
+        name: inspected.name,
+        platform,
+        approved: true,
+        installPackage,
+      });
+      const result = applied?.status === "installed" || applied?.status === "updated"
+        ? applied.status
+        : inspected.state === "install-available" || inspected.state === "missing"
+          ? "installed"
+          : "updated";
+      const item = {
+        name: inspected.name,
+        kind: inspected.kind,
+        state: inspected.state,
+        result,
+      };
+      if (applied?.post_install) item.post_install = applied.post_install;
+      results.push(item);
+      succeeded += 1;
+    } catch (error) {
+      failed += 1;
+      results.push({
+        name: inspected.name,
+        kind: inspected.kind,
+        state: inspected.state,
+        result: "failed",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
+  return {
+    results,
+    summary: { selected, succeeded, failed, skipped },
+  };
+}
+
 async function applyPackageUpdate({ entry, targetDir, platform, installPackage }) {
   const stagingRoot = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-package-"));
   const backup = await backupWriteRoots(targetDir, entry.write_paths, stagingRoot);
   const installer = installPackage || defaultPackageInstaller(entry.name);
+  const installedTarget = resolveInside(targetDir, entry.target_path, `${entry.name} target path`);
+  const targetExisted = await pathExists(installedTarget);
 
   try {
     await installer({ targetDir, platform });
-    const installedTarget = resolveInside(targetDir, entry.target_path, `${entry.name} target path`);
     await access(path.join(installedTarget, "SKILL.md"));
     await writeManagedMetadata(installedTarget, {
       name: entry.name,
@@ -298,6 +391,7 @@ async function applyPackageUpdate({ entry, targetDir, platform, installPackage }
       target_path: entry.target_path,
       source: entry.source_path ?? entry.name,
     });
+    return { status: targetExisted ? "updated" : "installed", post_install: entry.post_install ?? null };
   } catch (error) {
     await restoreWriteRoots(targetDir, backup);
     throw error;
@@ -364,18 +458,38 @@ async function readManagedEntries(skillRoot, platform) {
     readJson(path.join(root, "bundled-skills.json")),
     readJson(path.join(root, "bundled-packages.json")),
   ]);
+  const skillPolicy = normalizeManagedTargetPolicy(skillManifest, path.join(root, "bundled-skills.json"));
+  const packagePolicy = normalizeManagedTargetPolicy(packageManifest, path.join(root, "bundled-packages.json"));
   const directSkills = (skillManifest.bundled_skills || []).flatMap((entry) => {
     const platformEntry = entry.platforms?.find((candidate) => candidate.platform === platform);
-    return platformEntry ? [normalizeEntry(entry, platformEntry, "direct-skill")] : [];
+    return platformEntry ? [normalizeEntry(entry, platformEntry, "direct-skill", skillPolicy)] : [];
   });
   const packages = (packageManifest.bundled_packages || []).flatMap((entry) => {
     const platformEntry = entry.platform_skills?.find((candidate) => candidate.platform === platform);
-    return platformEntry ? [normalizeEntry(entry, platformEntry, "package")] : [];
+    return platformEntry ? [normalizeEntry(entry, platformEntry, "package", packagePolicy)] : [];
   });
   return [...directSkills, ...packages];
 }
 
-function normalizeEntry(entry, platformEntry, kind) {
+function normalizeManagedTargetPolicy(manifest, manifestPath) {
+  const raw = manifest?.activation_policy?.managed_target_policy;
+  if (raw === undefined) return { ...DEFAULT_MANAGED_TARGET_POLICY };
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new Error(`Invalid managed target policy: ${manifestPath}`);
+  }
+  if (!["replace-and-verify", "ask-before-write"].includes(raw.full_access)
+      || raw.approval_gated !== "ask-before-write"
+      || raw.personal_or_global_target_requires_explicit_request !== true) {
+    throw new Error(`Invalid managed target policy: ${manifestPath}`);
+  }
+  return {
+    full_access: raw.full_access,
+    approval_gated: raw.approval_gated,
+    personal_or_global_target_requires_explicit_request: raw.personal_or_global_target_requires_explicit_request,
+  };
+}
+
+function normalizeEntry(entry, platformEntry, kind, managedTargetPolicy) {
   if (!entry || typeof entry.name !== "string" || entry.name.trim() === "") throw new Error("Managed manifest entry requires a name.");
   if (typeof entry.version !== "string" || entry.version.trim() === "") throw new Error(`Managed manifest entry requires a version: ${entry.name}`);
   if (!platformEntry || typeof platformEntry.target_path !== "string" || platformEntry.target_path.trim() === "") throw new Error(`Managed manifest entry requires a target path: ${entry.name}`);
@@ -389,6 +503,7 @@ function normalizeEntry(entry, platformEntry, kind) {
     offer_by_default: entry.default_install?.offer_by_default === true,
     post_install: normalizePostInstall(entry.post_install, entry.name),
     write_paths: entry.default_install?.writes || [platformEntry.target_path],
+    managed_target_policy: managedTargetPolicy,
   };
 }
 
@@ -574,15 +689,16 @@ function resolveInside(rootDir, relativePath, label) {
 function parseArgs(args) {
   const [command, targetDir, ...rest] = args;
   if (!command || !targetDir || !["check", "apply", "decline"].includes(command)) {
-    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply|decline> <target-project> --platform <platform> [--name <name>] [--approved] [--confirmed] [--json]");
+    throw new Error("Usage: node scripts/manage-managed-skills.mjs <check|apply|decline> <target-project> --platform <platform> [--name <name>|--all] [--approved] [--confirmed] [--json]");
   }
 
-  const options = { command, targetDir, platform: "", name: "", approved: false, confirmed: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
+  const options = { command, targetDir, platform: "", name: "", all: false, approved: false, confirmed: false, json: false, skillRoot: path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..") };
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
     if (arg === "--approved") options.approved = true;
     else if (arg === "--confirmed") options.confirmed = true;
     else if (arg === "--json") options.json = true;
+    else if (arg === "--all") options.all = true;
     else if (["--platform", "--name", "--skill-root"].includes(arg)) {
       const value = rest[index += 1];
       if (!value) throw new Error(`${arg} requires a value`);
@@ -592,7 +708,10 @@ function parseArgs(args) {
     } else throw new Error(`Unexpected argument: ${arg}`);
   }
   if (!options.platform) throw new Error("--platform is required");
-  if (["apply", "decline"].includes(command) && !options.name) throw new Error(`--name is required for ${command}`);
+  if (options.all && command !== "apply") throw new Error("--all is only supported for apply");
+  if (options.all && options.name) throw new Error("--all and --name are mutually exclusive");
+  if (command === "apply" && !options.all && !options.name) throw new Error("--name or --all is required for apply");
+  if (command === "decline" && !options.name) throw new Error("--name is required for decline");
   if (command === "apply" && !options.approved) throw new Error("--approved is required for apply");
   if (command === "decline" && !options.confirmed) throw new Error("--confirmed is required for decline");
   return options;
@@ -603,7 +722,7 @@ async function runCli(args) {
   const result = options.command === "check"
     ? await inspectManagedUpdates(options)
     : options.command === "apply"
-      ? await applyManagedUpdate(options)
+      ? options.all ? await applyManagedUpdates(options) : await applyManagedUpdate(options)
       : await recordInstallOfferDecline(options);
   if (options.json) console.log(JSON.stringify(result, null, 2));
   else if (options.command === "check") console.log(result.managed.map((entry) => `${entry.name}: ${entry.state}`).join("\n"));

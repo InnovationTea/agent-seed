@@ -25,7 +25,7 @@
 
 | 模式 | 行为 |
 | --- | --- |
-| `full-access` | 适用的默认 skill、package 和 plugin 会自动安装并验证，清单声明的网络访问、个人或全局写入、项目指令编辑和其他安装副作用也在授权范围内。密钥、生产操作、破坏性操作、独立 hook 和未解决的冲突仍必须单独批准。 |
+| `full-access` | 适用的默认 skill、package 和 plugin 会自动安装并验证，清单声明的网络访问、项目指令编辑和其他安装副作用也在授权范围内；个人或全局 managed target 仍需负责人明确请求。密钥、生产操作、破坏性操作、独立 hook 和未解决的冲突仍必须单独批准。 |
 | `agent-approve` | 在已经确认的蒸馏或更新范围内可以写入项目知识，但安装、安装时网络访问、hook、个人或全局写入、较大范围重写、冲突和范围外修改都要先批准。 |
 | `ask-each-change` | 每次创建或修改知识文件、每次安装都要询问；安装时网络访问及个人或全局写入同样要批准。 |
 
@@ -57,6 +57,25 @@ Agent Seed 只为负责人使用或项目证据识别出的平台安装文件，
 - `ticket-lookup`：在项目已配置需求管理站点并且需要读取 SR/AR 时使用，它依赖 OpenCLI。
 
 这些直接 skill 默认安装到项目级平台目录，例如 Codex 的 `skills/<name>/`、Claude 的 `.claude/skills/<name>/`、codeagent-cli 的 `.cac/skills/<name>/` 或 OpenCode 的 `.opencode/skills/<name>/`。已有目标目录需要先决定是否替换；个人或全局目录只有在明确请求时才安装。
+
+### Managed skill updates / 已管理 skill 同步
+
+根级 `activation_policy.managed_target_policy` 定义替换边界。`full-access`
+会在适用性确认后执行 automatic managed synchronization，自动安装、更新和
+修复 bundled skills 与 packages：
+
+```sh
+node scripts/manage-managed-skills.mjs apply <target-project> --all --platform <platform> --approved --json
+```
+
+批量操作会重新检查状态，保留 exact-version decline，跳过
+`current`、`declined-current-version` 和 `baseline-unavailable`。每个条目独立
+备份和 rollback；某个条目 failed 后恢复其内容并 continue with later entries。
+`ask-each-change` 和 `agent-approve` 保留 approval-gated per-entry 流程，先逐条
+批准再使用 `--name <managed-name>`。`post_install` 动作完成后会再次运行 preflight。
+External integrations 仍由平台维护，Agent Seed 只报告状态，不复制、删除或替换；
+它们保持 platform-native ownership。更高的 manifest 版本会重新触发提示，精确版本
+拒绝不会被 full-access 绕过。
 
 ### Bundled package
 

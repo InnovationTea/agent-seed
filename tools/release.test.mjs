@@ -345,6 +345,21 @@ test("README documents the lightweight Agent Seed updater lifecycle", async () =
   assert.match(readme, /does not.*repository scan|no repository scan/is);
 });
 
+test("public managed-skill guidance documents full-access batch synchronization", async () => {
+  const rootDir = process.cwd();
+  const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
+  const chineseReadme = await readFile(path.join(rootDir, "README.zh-CN.md"), "utf8");
+  const outputAssets = await readFile(path.join(rootDir, "skill", "references", "output-assets.md"), "utf8");
+
+  for (const content of [readme, chineseReadme, outputAssets]) {
+    assert.match(content, /full-access.*(automatic|automatically|auto|自动).*managed.*(sync|synchron|batch|批量)/is);
+    assert.match(content, /rollback.*failed.*continue|failed.*rollback.*later/is);
+    assert.match(content, /exact-version.*decline|same version.*suppressed|精确版本.*拒绝/is);
+    assert.match(content, /approval-gated.*per-entry|ask-each-change.*--name|逐条.*批准/is);
+    assert.match(content, /external.*platform-native.*(never|not|remain|不会|原生)/is);
+  }
+});
+
 test("README provides a bilingual user quick start for onboarding and skill installs", async () => {
   const rootDir = process.cwd();
   const readme = await readFile(path.join(rootDir, "README.md"), "utf8");
@@ -374,6 +389,11 @@ test("bundled install manifests require activation preflight handling", async ()
     assert.equal(config.activation_policy.on_agent_seed_start, "must_check");
     assert.equal(config.activation_policy.approval_gated_default_install_action, "must_offer_before_onboarding");
     assertModeAwareInstallPolicy(config.activation_policy, { appliesToDefaultInstalls: true });
+    assert.deepEqual(config.activation_policy.managed_target_policy, {
+      full_access: "replace-and-verify",
+      approval_gated: "ask-before-write",
+      personal_or_global_target_requires_explicit_request: true,
+    });
   }
 
   assert.equal(bundledSkills.activation_policy.recurring_install_prompt, undefined);
@@ -387,6 +407,7 @@ test("bundled install manifests require activation preflight handling", async ()
 
   for (const entry of bundledSkills.bundled_skills) {
     assertModeAwareItemApproval(entry.default_install);
+    assert.equal(entry.safety, undefined);
     if (entry.post_install) {
       assertModeAwareItemApproval(entry.post_install);
     }
@@ -394,6 +415,7 @@ test("bundled install manifests require activation preflight handling", async ()
 
   for (const entry of bundledPackages.bundled_packages) {
     assertModeAwareItemApproval(entry.default_install);
+    assert.equal(entry.safety, undefined);
   }
 });
 
@@ -511,6 +533,11 @@ test("agent-seed-updater bundled skill defines a bounded conversation preflight"
   assert.match(skill, /first run.*AGENTS\.md/is);
   assert.match(skill, /old direct.*manage-managed-skills\.mjs.*preflight/is);
   assert.match(skill, /post_install.*ensure-agent-seed-updater-startup-rule/is);
+  assert.match(skill, /resolve.*knowledge_asset_write_mode.*before.*preflight/is);
+  assert.match(skill, /full-access.*manage-managed-skills\.mjs apply.*--all.*--approved.*--json/is);
+  assert.match(skill, /ask-each-change.*agent-approve.*manage-managed-skills\.mjs apply.*--name/is);
+  assert.match(skill, /post_install.*preflight again/is);
+  assert.match(skill, /failed.*continue.*later/is);
 
   const codexPrompt = await readFile(
     path.join(rootDir, "skill", "bundled-skills", "agent-seed-updater", "overlays", "codex", "agents", "openai.yaml"),
@@ -997,6 +1024,9 @@ test("Agent Seed resolves full-access before installing applicable defaults", as
   assert.match(skill, /interactive.*manual.*stop.*onboarding/is);
   assert.match(skill, /standalone hook.*secrets.*production.*destructive/is);
   assert.match(skill, /ask-each-change.*agent-approve.*ask/is);
+  assert.match(skill, /managed_target_policy.*replace-and-verify/is);
+  assert.match(skill, /full-access.*managed.*batch.*approval-gated/is);
+  assert.match(skill, /approval_gated.*ask-before-write/is);
 
   assert.match(prompt, /resolve.*knowledge_asset_write_mode.*before.*preflight/i);
   assert.match(prompt, /full-access.*install.*verify.*without approval/i);

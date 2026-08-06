@@ -185,14 +185,24 @@ installed marker. After an approved higher version is installed, preserve the
 higher value in `managed-skills.json` and tell the owner to review and commit
 that shared baseline change. Reject unsupported managed state fields and future
 schemas without rewriting the shared file.
+
+Bundled manifests declare one root `activation_policy.managed_target_policy`.
+In `full-access`, `full_access: "replace-and-verify"` authorizes replacement
+inside declared project-local managed targets. In `ask-each-change` and
+`agent-approve`, the `approval_gated: "ask-before-write"` policy requires owner
+approval before each managed write. A missing root policy falls back to the
+conservative approval-gated behavior for existing targets, and
+`personal_or_global_target_requires_explicit_request` remains true.
 External integration availability and actual versions stay in local
 `.agents/agent-seed.local.json`. The manager reports `install-available` for
 new applicable default offers and retains `declined-current-version` only as a
 quiet diagnostic. Record a decline only
 after the owner explicitly rejects that exact manifest version. The same
-version stays suppressed; a higher manifest version is offered again. Run
-managed `apply` or `decline` commands only after the corresponding explicit
-owner response.
+version stays suppressed; a higher manifest version is offered again. In
+`full-access`, invoke the sequential managed batch for actionable bundled
+entries and report failures while continuing later entries. In approval-gated
+modes, run one managed `apply` or `decline` command only after the
+corresponding explicit owner response.
 
 Verify updater availability and startup-rule visibility independently. A
 pre-existing or partial installation with a missing startup rule must receive
@@ -292,18 +302,18 @@ The output files are internal engineering guides and automation runbooks, not co
 - Label framework knowledge sources explicitly: `Preset`, `Repo-confirmed`, `Owner-confirmed`, `Inferred`, or `Unknown`.
 - Capture automation blockers as explicit breakpoints with owner-confirmed fixes or escalation rules.
 - Capture approved skills, recommended external plugins, project scripts, and internal tools with trigger conditions, required inputs, success signals, and safety levels.
-- Capture bundled direct skills with source path, supported platforms, target paths, trigger conditions, default-offer rules, verification, and safety rules.
-- Capture bundled packages and their platform skills with version, source, install target, trigger conditions, required inputs, verification, and safety rules.
+- Capture bundled direct skills with source path, supported platforms, target paths, trigger conditions, default-offer rules, verification, and the root `activation_policy.managed_target_policy`.
+- Capture bundled packages and their platform skills with version, source, install target, trigger conditions, required inputs, verification, and the root `activation_policy.managed_target_policy`.
 - Route routine knowledge discovered during later agent work to the installed `knowledge-updater` skill.
 - Distill tacit knowledge into executable instructions, recipes, playbooks, and handoff criteria, not background explanation.
 - Preserve existing instruction files unless the user confirms replacement.
-- Resolve `knowledge_asset_write_mode` before the Activation Preflight and before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit and before installation. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets and run applicable manifest installs directly; install authorization includes required network access, personal/global writes, and manifest-declared side effects such as hooks. Standalone hook changes, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require owner approval.
+- Resolve `knowledge_asset_write_mode` before the Activation Preflight and before writing onboarding assets. In `ask-each-change`, ask before each file creation or edit and before installation. In `agent-approve`, write within the confirmed onboarding/update scope but ask before conflicts, deletes, broad rewrites, installs, hooks, external network use, or personal/global directory writes. In `full-access`, write onboarding assets and run applicable manifest installs directly; a root `managed_target_policy.full_access: replace-and-verify` also authorizes declared project-local managed target replacement. Missing root policy, personal/global targets, standalone hook changes, secrets, production actions, destructive actions, and unresolved replacement or merge conflicts still require owner approval.
 - Establish the target project root before scanning. Treat that root as the scan boundary and do not scan the agent-seed skill source directory, personal/global skill directories, Codex plugin caches, or `$CODEX_HOME` as repository evidence unless the user explicitly names one of them as the target project. When target-root evidence cannot identify the platform, ask before a narrow user-level fallback scan and confirm any platform inferred from that scan with the owner.
 - Complete Activation Preflight before scan summaries, owner interviews, generated guidance, or claims that no installs are needed; the preflight may include the minimal target-root platform-evidence scan described above.
 - Do not run build, test, migration, deploy, or service-start commands unless the user confirms they are safe in the current environment; installation authorization is controlled by the resolved manifest mode policy.
 - Install bundled direct skills according to `bundled-skills.json` only for platforms the owner explicitly uses or repository evidence detects. In `full-access`, install and verify every missing applicable default without a separate prompt. In `ask-each-change` and `agent-approve`, ask for approval before installing or applying declared post-install instruction edits.
 - Install bundled packages according to `bundled-packages.json` only when their applicability and platform gates pass. In `full-access`, run and verify applicable default installers with all declared write roots and side effects authorized. In the two approval-gated modes, disclose those effects and get approval first.
-- A selected personal/global install target does not require another prompt in `full-access`; in the two approval-gated modes, personal/global installation requires explicit owner approval.
+- A selected personal/global managed target requires an explicit owner request in every mode; in the two approval-gated modes it also requires the corresponding approval before writing.
 - Do not store secrets, personal machine paths, private account identifiers, one-off incident chatter, or temporary knowledge in onboarding assets.
 
 ## Progressive Disclosure

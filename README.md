@@ -45,7 +45,7 @@ default `full-access`:
 
 | Mode | Behavior |
 | --- | --- |
-| `full-access` | Install and verify every applicable default, including declared network, personal/global writes, project instruction edits, and package side effects, without a second prompt. Secrets, production actions, destructive actions, standalone hooks, and unresolved conflicts still require approval. |
+| `full-access` | Install and verify every applicable default, including declared network, project instruction edits, and package side effects, without a second prompt. A personal/global target still requires an explicit owner request. Secrets, production actions, destructive actions, standalone hooks, and unresolved conflicts still require approval. |
 | `agent-approve` | Make edits inside the confirmed onboarding/update scope, but ask before installs, install-time network access, hooks, personal/global writes, broad rewrites, conflicts, or other out-of-scope changes. |
 | `ask-each-change` | Ask before each onboarding or knowledge-file creation/edit and before every install; install-time network access and personal/global writes also require approval. |
 
@@ -68,10 +68,10 @@ platform's files.
   `agent-seed-updater` runs once at the start of a new conversation, and
   `knowledge-updater` runs after each completed task. `gitpush`, `gitsync`,
   `gittag`, and `ticket-lookup` are available when their workflows are needed.
-  Existing target directories require a decision. Personal/global targets must
-  be explicitly selected by the owner; in `full-access` that selection
-  authorizes declared writes without another install prompt, while gated modes
-  still ask for approval.
+  Existing target directories follow the root `managed_target_policy`: in
+  `full-access`, `replace-and-verify` authorizes declared project-local
+  replacement; gated modes ask per entry. Personal/global targets must be
+  explicitly selected by the owner in every mode.
 - **Bundled packages** include `git-code-tracker`. When its platform gate
   applies, install it with:
 
@@ -194,8 +194,9 @@ The supported values are `ask-each-change`, `agent-approve`, and
 `full-access`. In `ask-each-change` and `agent-approve`, installs, install-time
 network access, and personal or global writes require separate approval. In
 `full-access`, applicable default installs and verification run without
-approval; authorization includes required network access, personal or global
-writes, and every manifest-declared side effect, including hooks. Standalone
+approval after any required personal/global target request; authorization
+includes required network access and every manifest-declared side effect,
+including hooks. Standalone
 hook changes, secrets, production actions, destructive actions, and unresolved
 replacement or merge conflicts still require approval in every mode.
 
@@ -373,27 +374,47 @@ At the start of a new conversation, the installed
 node scripts/check-agent-seed-updates.mjs <target-project> --platform <platform> --json
 ```
 
-The Agent Seed part keeps the existing 24-hour cache and approval-gated apply
+The Agent Seed part keeps the existing 24-hour cache and approval-gated self-update
 behavior. Missing or invalid Agent Seed version/baseline evidence is `unknown`,
 and an apply candidate below the committed minimum is rejected. The managed
-part reports `current`, `update-available`, `missing`,
-`unverified`, `baseline-unavailable`, `legacy-unmanaged`, `install-available`,
-or `declined-current-version`. `baseline-unavailable` also covers a shared
-entry or version that the installed Agent Seed manifest cannot supply, even
-when the local target is also missing. A
-declined current version is diagnostic-only and the same version is suppressed
-instead of prompting again. A higher manifest version prompts again. Deferring
-or ignoring an offer does not record a decline.
+part reports `current`, `update-available`, `missing`, `unverified`,
+`baseline-unavailable`, `legacy-unmanaged`, `install-available`, or
+`declined-current-version`. `baseline-unavailable` also covers a shared entry
+or version that the installed Agent Seed manifest cannot supply, even when the
+local target is also missing. An exact-version decline is diagnostic-only and
+the same offer stays suppressed; a higher manifest version becomes actionable
+again. A higher manifest version prompts again and becomes actionable. The same version stays suppressed; deferring or ignoring an offer does
+not record a decline.
 
-The preflight does not hash installed directories, modify managed project
-content, run onboarding, or scan the repository. After explicit owner
-approval, install or update one managed item with:
+The root `activation_policy.managed_target_policy` declares the managed-target
+safety boundary. In `full-access`, `full_access: "replace-and-verify"` enables
+automatic synchronization of declared project-local bundled skills and
+packages. The updater runs this batch when actionable entries exist:
+
+```bash
+node scripts/manage-managed-skills.mjs apply <target-project> --all --platform <platform> --approved --json
+```
+
+The batch re-inspects before selecting entries, preserves exact-version
+declines, skips `current`, `declined-current-version`, and
+`baseline-unavailable`, and applies direct skills and packages in manifest
+order. Each entry keeps its own verification, backup, and rollback; when one
+entry has failed, its rollback is reported and later entries continue.
+
+In `ask-each-change` and `agent-approve`, the preflight remains read-only and
+the updater asks for approval per entry before using:
 
 ```bash
 node scripts/manage-managed-skills.mjs apply <target-project> --name <managed-name> --platform <platform> --approved
 ```
 
-Record an explicit version-specific decline with:
+After a synchronous Agent Seed update or managed batch, apply returned
+`post_install` actions within their declared scope and run the combined
+preflight again. External integrations remain platform-native: Agent Seed
+reports their state but never copies, deletes, or replaces an external plugin.
+
+The preflight does not hash installed directories, run onboarding, or scan the
+repository. Record an explicit version-specific decline with:
 
 ```bash
 node scripts/manage-managed-skills.mjs decline <target-project> --name <managed-name> --platform <platform> --confirmed
@@ -405,9 +426,9 @@ that recheck until the next conversation after replacement completes.
 
 Direct skills are staged and replaced with rollback on verification failure.
 Bundled packages use their existing installer with backups of their declared
-write roots. A legacy unrecorded installation is force-replaced only after the
-same approval, then becomes managed. Apply operations reject versions below
-either the shared baseline or verified installed marker. A successful install
+write roots. A legacy unrecorded installation is replaced under the same root
+policy and then becomes managed. Apply operations reject versions below either
+the shared baseline or verified installed marker. A successful install
 of a higher managed version advances `.agents/managed-skills.json`; review and
 commit that team baseline change. External integrations follow the same
 no-downgrade shared-baseline rule but remain owned by their platform; Agent Seed
