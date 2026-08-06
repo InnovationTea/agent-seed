@@ -750,6 +750,76 @@ test("managed update CLI check is read-only and apply requires approval", async 
   }
 });
 
+test("managed update CLI requires approval for --all and rejects --all with --name", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-cli-all-contract-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+  const script = path.join(process.cwd(), "skill", "scripts", "manage-managed-skills.mjs");
+
+  try {
+    await writeSyntheticManifest(skillRoot, [{ name: "gitpush", version: "v1.1.0" }]);
+    await assert.rejects(
+      execFileAsync(process.execPath, [script, "apply", targetDir, "--all", "--platform", "codex", "--skill-root", skillRoot, "--json"]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /--approved is required for apply/);
+        return true;
+      },
+    );
+    await assert.rejects(
+      execFileAsync(process.execPath, [script, "apply", targetDir, "--all", "--name", "gitpush", "--platform", "codex", "--skill-root", skillRoot, "--approved", "--json"]),
+      (error) => {
+        assert.equal(error.code, 1);
+        assert.match(error.stderr, /--all and --name are mutually exclusive/);
+        return true;
+      },
+    );
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
+test("managed update CLI applies all selected entries and returns batch JSON", async () => {
+  const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-cli-all-"));
+  const skillRoot = path.join(rootDir, "skill-root");
+  const targetDir = path.join(rootDir, "target");
+  const script = path.join(process.cwd(), "skill", "scripts", "manage-managed-skills.mjs");
+
+  try {
+    await writeSyntheticManifest(skillRoot, [
+      { name: "first-skill", version: "v1.1.0" },
+      { name: "second-skill", version: "v1.1.0" },
+    ]);
+    for (const name of ["first-skill", "second-skill"]) {
+      await mkdir(path.join(skillRoot, "bundled-skills", name, "skill"), { recursive: true });
+      await writeFile(path.join(skillRoot, "bundled-skills", name, "skill", "SKILL.md"), `${name}\n`);
+    }
+
+    const { stdout } = await execFileAsync(process.execPath, [
+      script,
+      "apply",
+      targetDir,
+      "--all",
+      "--platform",
+      "codex",
+      "--skill-root",
+      skillRoot,
+      "--approved",
+      "--json",
+    ]);
+    const result = JSON.parse(stdout);
+    assert.deepEqual(result.summary, { selected: 2, succeeded: 2, failed: 0, skipped: 0 });
+    assert.deepEqual(result.results.map(({ name, result: status }) => ({ name, status })), [
+      { name: "first-skill", status: "installed" },
+      { name: "second-skill", status: "installed" },
+    ]);
+    assert.equal(await readFile(path.join(targetDir, "skills", "first-skill", "SKILL.md"), "utf8"), "first-skill\n");
+    assert.equal(await readFile(path.join(targetDir, "skills", "second-skill", "SKILL.md"), "utf8"), "second-skill\n");
+  } finally {
+    await rm(rootDir, { recursive: true, force: true });
+  }
+});
+
 test("recordInstallOfferDecline requires confirmation and stores the manifest version", async () => {
   const rootDir = await mkdtemp(path.join(tmpdir(), "agent-seed-managed-decline-"));
   const skillRoot = path.join(rootDir, "skill-root");
