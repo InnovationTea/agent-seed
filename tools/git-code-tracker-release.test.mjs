@@ -144,17 +144,46 @@ test("installGitCodeTracker rejects an invalid tracker config before verificatio
   }
 });
 
-test("installGitCodeTracker fails before copying when the release asset is missing", async () => {
+test("installGitCodeTracker downloads the release asset when the bundled zip is missing", async () => {
+  const targetDir = await createGitRepository();
+  const downloaded = [];
+  const missingArchivePath = path.join(targetDir, "missing.zip");
+
+  try {
+    await mkdir(path.join(targetDir, ".claude"));
+
+    await installGitCodeTracker({
+      targetDir,
+      env: {},
+      archivePath: missingArchivePath,
+      downloadAsset: async (downloadUrl, zipPath) => {
+        downloaded.push({ downloadUrl, zipPath });
+        await writeFile(zipPath, await readFile(archivePath));
+      },
+    });
+
+    assert.equal(downloaded.length, 1);
+    assert.equal(
+      downloaded[0].downloadUrl,
+      "https://github.com/yooocen/git-code-tracker/releases/download/v1.0.5/ai-commit-statistic-skill-v1.0.5.zip",
+    );
+    assert.equal(downloaded[0].zipPath, missingArchivePath);
+    assert.equal(await exists(path.join(targetDir, ".claude", "skills", "ai-code-tracker", "SKILL.md")), true);
+  } finally {
+    await rm(targetDir, { recursive: true, force: true });
+  }
+});
+
+test("installGitCodeTracker adds a zip ignore rule to the target repository", async () => {
   const targetDir = await createGitRepository();
 
   try {
     await mkdir(path.join(targetDir, ".claude"));
 
-    await assert.rejects(
-      installGitCodeTracker({ targetDir, env: {}, archivePath: path.join(targetDir, "missing.zip") }),
-      /Missing release asset/,
-    );
-    assert.equal(await exists(path.join(targetDir, ".claude", "skills", "ai-code-tracker")), false);
+    await installGitCodeTracker({ targetDir, env: {}, archivePath });
+
+    const gitignore = await readFile(path.join(targetDir, ".gitignore"), "utf8");
+    assert.match(gitignore, /^\.claude\/skills\/agent-seed\/packages\/git-code-tracker\/\*\.zip$/m);
   } finally {
     await rm(targetDir, { recursive: true, force: true });
   }
