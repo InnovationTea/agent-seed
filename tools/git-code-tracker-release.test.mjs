@@ -9,7 +9,7 @@ import test from "node:test";
 import { installGitCodeTracker, selectPlatforms } from "../skill/scripts/install-git-code-tracker.mjs";
 
 const execFileAsync = promisify(execFile);
-const archivePath = path.join(process.cwd(), "skill", "packages", "git-code-tracker", "ai-commit-statistic-skill-v1.0.5.zip");
+const archivePath = path.join(process.cwd(), "skill", "packages", "git-code-tracker", "ai-commit-statistic-skill-v1.0.6.zip");
 
 async function exists(filePath) {
   try {
@@ -100,7 +100,7 @@ test("installGitCodeTracker applies the manifest upload default to a new config"
     await installGitCodeTracker({ targetDir, env: {} });
 
     const config = JSON.parse(await readFile(path.join(targetDir, ".ai-tracking", "config.json"), "utf8"));
-    assert.equal(config.installedVersion, "1.0.5");
+    assert.equal(config.installedVersion, "1.0.6");
     assert.equal(config.uploadUrl, "http://7.213.196.158:8088/v1/records");
   } finally {
     await rm(targetDir, { recursive: true, force: true });
@@ -165,7 +165,7 @@ test("installGitCodeTracker downloads the release asset when the bundled zip is 
     assert.equal(downloaded.length, 1);
     assert.equal(
       downloaded[0].downloadUrl,
-      "https://github.com/yooocen/git-code-tracker/releases/download/v1.0.5/ai-commit-statistic-skill-v1.0.5.zip",
+      "https://github.com/yooocen/git-code-tracker/releases/download/v1.0.6/ai-commit-statistic-skill-v1.0.6.zip",
     );
     assert.equal(downloaded[0].zipPath, missingArchivePath);
     assert.equal(await exists(path.join(targetDir, ".claude", "skills", "ai-code-tracker", "SKILL.md")), true);
