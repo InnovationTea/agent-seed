@@ -1,14 +1,17 @@
 import { execFile } from "node:child_process";
-import { access, cp, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 
+import { downloadAsset } from "./update-agent-seed.mjs";
+
 const execFileAsync = promisify(execFile);
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const DEFAULT_ARCHIVE_PATH = path.join(scriptDir, "..", "packages", "git-code-tracker", "ai-commit-statistic-skill-v1.0.5.zip");
 const BUNDLED_PACKAGES_PATH = path.join(scriptDir, "..", "bundled-packages.json");
+const TARGET_GITIGNORE_RULE = ".claude/skills/agent-seed/packages/git-code-tracker/*.zip";
 
 const PLATFORMS = {
   opencode: {
@@ -49,13 +52,22 @@ export async function installGitCodeTracker({
   platform,
   env = process.env,
   archivePath = DEFAULT_ARCHIVE_PATH,
+  downloadAsset: downloadAssetImpl = downloadAsset,
 } = {}) {
   const resolvedTargetDir = path.resolve(targetDir);
   const resolvedArchivePath = path.resolve(archivePath);
-  await assertFile(resolvedArchivePath, "release asset");
+  const packageManifest = await loadBundledPackagesManifest();
+  const tracker = getGitCodeTrackerPackage(packageManifest);
+
+  if (!(await fileExists(resolvedArchivePath))) {
+    const downloadUrl = buildReleaseAssetUrl(tracker);
+    await mkdir(path.dirname(resolvedArchivePath), { recursive: true });
+    await downloadAssetImpl(downloadUrl, resolvedArchivePath, { env });
+  }
 
   const platforms = await selectPlatforms({ targetDir: resolvedTargetDir, platform, env });
-  const uploadConfig = await loadTrackerUploadConfig();
+  const uploadConfig = await loadTrackerUploadConfig(packageManifest);
+  await updateTargetGitignore(resolvedTargetDir);
   for (const selectedPlatform of platforms) {
     await installPlatform({
       targetDir: resolvedTargetDir,
@@ -93,15 +105,33 @@ async function installPlatform({ targetDir, platform, env, archivePath, uploadCo
   }
 }
 
-async function loadTrackerUploadConfig() {
-  let manifest;
+async function loadBundledPackagesManifest() {
   try {
-    manifest = JSON.parse(await readFile(BUNDLED_PACKAGES_PATH, "utf8"));
+    return JSON.parse(await readFile(BUNDLED_PACKAGES_PATH, "utf8"));
   } catch (error) {
     throw new Error(`Unable to read bundled package manifest: ${error.message}`);
   }
+}
 
+function getGitCodeTrackerPackage(manifest) {
   const tracker = manifest.bundled_packages?.find((entry) => entry.name === "git-code-tracker");
+  if (!tracker) {
+    throw new Error("Missing git-code-tracker package entry in bundled-packages.json");
+  }
+  if (tracker.source?.type !== "github-release-asset" || typeof tracker.source.repo !== "string" || typeof tracker.source.ref !== "string" || typeof tracker.source.asset !== "string") {
+    throw new Error("Invalid git-code-tracker release metadata in bundled-packages.json");
+  }
+  return tracker;
+}
+
+function buildReleaseAssetUrl(tracker) {
+  const repo = tracker.source.repo.replace(/\/$/, "");
+  const ref = tracker.source.ref.replace(/^refs\/tags\//, "");
+  return `${repo}/releases/download/${ref}/${tracker.source.asset}`;
+}
+
+async function loadTrackerUploadConfig(manifest) {
+  const tracker = getGitCodeTrackerPackage(manifest);
   const upload = tracker?.upload;
   if (
     !upload ||
@@ -118,6 +148,27 @@ async function loadTrackerUploadConfig() {
     defaultUrl: upload.default_url.trim(),
     preserveExistingUrl: upload.preserve_existing_url,
   };
+}
+
+async function updateTargetGitignore(targetDir) {
+  const gitignorePath = path.join(targetDir, ".gitignore");
+  let content = "";
+  try {
+    content = await readFile(gitignorePath, "utf8");
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      throw error;
+    }
+  }
+
+  const lines = content.split(/\r?\n/).filter((line) => line.trim() !== TARGET_GITIGNORE_RULE);
+  lines.push(TARGET_GITIGNORE_RULE);
+  const next = `${lines.join("\n").replace(/\n+$/, "")}\n`;
+  if (next === content) {
+    return false;
+  }
+  await writeFile(gitignorePath, next, "utf8");
+  return true;
 }
 
 async function applyUploadDefault({ targetDir, uploadConfig }) {
@@ -209,11 +260,12 @@ async function detectProjectPlatforms(targetDir) {
   return detected;
 }
 
-async function assertFile(filePath, label) {
+async function fileExists(filePath) {
   try {
     await access(filePath);
+    return true;
   } catch {
-    throw new Error(`Missing ${label}: ${filePath}`);
+    return false;
   }
 }
 
